@@ -12,13 +12,17 @@
 | متغیر | مقدار پیشنهادی |
 |--------|----------------|
 | `NODE_ENV` | `production` |
-| `RUNFLARE` | `1` |
 | `HOST` | `0.0.0.0` |
 | `PORT` | `3000` (یا پورت سرویس) |
 
-با `NODE_ENV=production` یا `RUNFLARE=1`، بعد از `npm install` اسکریپت `postinstall` به‌صورت خودکار `next build` را اجرا می‌کند. نیازی به تعریف دستی دستور build در پنل نیست.
+### ترتیب بیلد Runflare (مهم)
 
-استارت از `package.json` → `npm start` → migrate + `next start` (همان `scripts/run-production.mjs`).
+ایمیج Runflare اول فقط `package.json` و `prisma/` را کپی می‌کند و `npm install` می‌زند. بنابراین:
+
+- **`postinstall`** فقط باید `prisma generate` باشد (بدون اسکریپت داخل `scripts/`).
+- **`next build`** با اسکریپت **`npm run build`** بعد از کپی کل سورس اجرا می‌شود (پیش‌فرض سرویس NextJS).
+
+استارت: `npm start` → `scripts/run-production.mjs` (bootstrap + migrate + `next start`).
 
 ## دستورات محلی
 
@@ -38,3 +42,4 @@ runflare restart
 
 - لاگ فقط `runflare.png` → سرویس NextJS نیست یا اپ استارت نشده / Auto Restart خاموش.
 - `npx prisma migrate deploy` نسخهٔ اشتباه Prisma می‌کشد → همیشه `npm run db:deploy` استفاده کنید.
+- `Cannot find module .../scripts/postinstall.mjs` → `postinstall` نباید فایل داخل `scripts/` صدا بزند؛ فقط `prisma generate`.
