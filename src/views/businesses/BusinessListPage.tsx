@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Building2,
@@ -43,9 +43,17 @@ function formatExpiry(iso?: string) {
 
 export default function BusinessListPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { businesses, loading, error, setActiveBusinessId, removeBusiness, refreshBusinesses } =
     useBusiness();
+
+  useEffect(() => {
+    if (FRONTEND_ONLY) return;
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/login?next=/businesses');
+    }
+  }, [authLoading, user, router]);
 
   const saveBusinessLogo = async (
     businessId: string,

@@ -12,21 +12,12 @@ function hasSessionCookie(req: NextRequest): boolean {
   return !!req.cookies.get(SESSION_COOKIE)?.value;
 }
 
-function safeNextPath(next: string | null): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/businesses';
-  return next;
-}
-
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Do not redirect away from /login when a cookie exists — stale/invalid cookies
+  // must still reach login; the login page redirects only after /api/auth/me succeeds.
   if (pathname.startsWith('/login')) {
-    if (hasSessionCookie(req)) {
-      const target = req.nextUrl.clone();
-      target.pathname = safeNextPath(req.nextUrl.searchParams.get('next'));
-      target.search = '';
-      return NextResponse.redirect(target);
-    }
     return NextResponse.next();
   }
 
@@ -48,5 +39,11 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/login', '/dashboard/:path*', '/businesses/:path*'],
+  matcher: [
+    '/login',
+    '/dashboard',
+    '/dashboard/:path*',
+    '/businesses',
+    '/businesses/:path*',
+  ],
 };

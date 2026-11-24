@@ -63,6 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/auth/me', { credentials: 'include' });
       if (!res.ok) {
         setUser(null);
+        if (res.status === 401) {
+          await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(
+            () => undefined,
+          );
+        }
         return;
       }
       const json = await res.json();
