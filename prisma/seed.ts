@@ -1,10 +1,15 @@
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
-import { PERMISSION_CATALOG } from '../src/lib/auth/permissions-catalog';
+import {
+  PERMISSION_CATALOG,
+  type PermissionDef,
+} from '@/src/lib/auth/permissions-catalog';
 
 const prisma = new PrismaClient();
 
-const ALL_PERMISSIONS = Object.fromEntries(PERMISSION_CATALOG.map((p) => [p.key, true]));
+const ALL_PERMISSIONS = Object.fromEntries(
+  PERMISSION_CATALOG.map((p: PermissionDef) => [p.key, true]),
+);
 
 const SYSTEM_ROLES = [
   {
