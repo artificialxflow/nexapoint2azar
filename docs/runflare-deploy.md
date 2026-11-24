@@ -43,3 +43,9 @@ runflare restart
 - لاگ فقط `runflare.png` → سرویس NextJS نیست یا اپ استارت نشده / Auto Restart خاموش.
 - `npx prisma migrate deploy` نسخهٔ اشتباه Prisma می‌کشد → همیشه `npm run db:deploy` استفاده کنید.
 - `Cannot find module .../scripts/postinstall.mjs` → `postinstall` نباید فایل داخل `scripts/` صدا بزند؛ فقط `prisma generate`.
+- **`CrashLoopBackOff` / `Startup probe failed ...:3000: connection refused`**:
+  - env: `PORT=3000`, `HOST=0.0.0.0` (هم‌راستا با health check پنل).
+  - پس از اولین دیپلوی: `SKIP_MIGRATE=true` (و در صورت نیاز `SKIP_BOOTSTRAP=true`).
+  - در پنل Runflare اگر startup probe قابل تنظیم است: initial delay حدود **۶۰–۱۲۰s**.
+  - استارت اپ: `next start` همزمان با bootstrap/migrate در پس‌زمینه (`scripts/run-production.mjs`).
+  - health: `GET /api/health` → `{"ok":true}`.
