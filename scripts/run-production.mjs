@@ -14,14 +14,17 @@ function run(command, args) {
 const migrateOnly = process.env.MIGRATE_ONLY === 'true' || process.env.MIGRATE_ONLY === '1';
 const skipMigrate = process.env.SKIP_MIGRATE === 'true' || process.env.SKIP_MIGRATE === '1';
 
-await run('npx', ['tsx', 'scripts/bootstrap-storage-once.ts']);
+const host = process.env.HOST?.trim() || '0.0.0.0';
+const port = process.env.PORT?.trim() || '3000';
+
+await run('npm', ['run', 'storage:bootstrap']);
 
 if (!skipMigrate) {
-  await run('npx', ['prisma', 'migrate', 'deploy']);
+  await run('npm', ['run', 'db:deploy']);
 }
 
 if (migrateOnly) {
   process.exit(0);
 }
 
-await run('npx', ['next', 'start']);
+await run('npm', ['exec', '--', 'next', 'start', '--hostname', host, '--port', port]);
