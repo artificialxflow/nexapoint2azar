@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-vazir), ui-sans-serif, system-ui, sans-serif;
+  --color-nexa-primary: #2b2a28;
+  --color-nexa-accent: #ffcd11;
+  --color-nexa-bg: #efede7;
+  --color-nexa-card: #ffffff;
+  --color-nexa-border: rgba(43, 42, 40, 0.08);
+}
+
+@layer base {
+  html {
+    direction: rtl;
+    font-family: var(--font-sans);
+    background-color: var(--color-nexa-bg);
+    color: var(--color-nexa-primary);
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--color-nexa-bg);
+    color: var(--color-nexa-primary);
+  }
+
+  .font-fa-num {
+    font-feature-settings: "ss01";
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+
+  /** نوار تب میزکار — اسکرول افقی با padding تا آخرین تب بریده نشود */
+  .meizito-tab-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-padding-inline: 12px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(43, 42, 40, 0.2) transparent;
+  }
+
+  .meizito-tab-scroll::-webkit-scrollbar {
+    height: 5px;
+  }
+
+  .meizito-tab-scroll::-webkit-scrollbar-thumb {
+    background: rgba(43, 42, 40, 0.15);
+    border-radius: 999px;
+  }
+
+  /** ستون‌های کانبان — اسکرول افقی با نوار قابل‌دیدن */
+  .meizito-kanban-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scroll-padding-inline: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(43, 42, 40, 0.35) transparent;
+  }
+
+  .meizito-kanban-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .meizito-kanban-scroll::-webkit-scrollbar-thumb {
+    background: rgba(43, 42, 40, 0.3);
+    border-radius: 999px;
+  }
+}
+
+@layer components {
+  .nexa-card {
+    background: var(--color-nexa-card);
+    border: 1px solid var(--color-nexa-border);
+    border-radius: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  }
+
+  .nexa-btn-primary {
+    background-color: var(--color-nexa-accent);
+    color: white;
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .nexa-btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+}
