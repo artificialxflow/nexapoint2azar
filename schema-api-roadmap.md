@@ -1,6 +1,8 @@
 # نقشهٔ راه اسکیما + API — Nexapoint
 
-**به‌روز v10:** جدول مدل→API→UI و طرح migration بورد در [updates/09/schema-alignment.md](updates/09/schema-alignment.md). در **production** Meizito فقط از DB (`db`) تغذیه می‌شود؛ حالت `slice`/`dual` صرفاً dev.
+**v11 freeze (۲۰۲۶-۱۱-۲۴):** [docs/schema-v11-freeze.md](docs/schema-v11-freeze.md) — قفل migration تا `20261124200000_v11_phase7_flow_status_enums`.  
+**به‌روز v11:** چک‌لیست → [todo-v11.md](todo-v11.md) · ممیزی → [docs/schema-v11-audit.md](docs/schema-v11-audit.md). فاز ۸ Json **پس از freeze** تدریجی است.  
+**به‌روز v10:** UAT بعد از freeze — [todo-v10.md](todo-v10.md). در **production** Meizito از DB (`db`)؛ `slice`/`dual` فقط dev.
 
 **هدف:** انتقال تدریجی از MVP فعلی (JSON در `MeizitoSlice` / `ErpPerson` / `BusinessProduct` / …) به مدل نرمال **nexa-db-blueprint**، **بدون** یک migration غول‌آسا روی VPS.
 
@@ -53,10 +55,12 @@
 
 - [x] Blueprint طراحی (`nexa-db-blueprint/prisma/schema.prisma` — validate)
 - [x] Auth / tenant / business API (نرمال)
-- [x] Meizito API روی `MeizitoSlice` (JSON)
-- [x] People / Products / Warehouse API روی JSON (`ErpPerson`, `BusinessProduct`, `WarehouseItem`)
-- [ ] Roadmap فازبه‌فاز در production schema
-- [ ] حذف legacy JSON پس از backfill کامل
+- [x] **v11 promote شده در `prisma/schema.prisma`:** Person FK، Catalog SSOT، Workspace DB، `EntityAttachment`, Decimal, `@db.Date`, flow enums
+- [x] Meizito comms/workspace روی جداول Prisma (`comms-db-service`, `workspace-db-service`) وقتی `MEIZITO_*_STORAGE=db`
+- [ ] Json legacy داخل مدل‌ها (~۵۶ فیلد) — **فاز ۸ پس از freeze** (نه blocker UAT)
+- [x] Roadmap migration v11 روی dev (زنجیره در freeze doc)
+- [ ] `prisma migrate deploy` + UAT روی staging
+- [ ] Playwright smoke (پس از freeze — `qa/uat-nexapoint/e2e/`)
 
 ---
 

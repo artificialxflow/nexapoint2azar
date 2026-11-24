@@ -1,12 +1,32 @@
 import { prisma } from '@/src/lib/db/prisma';
 import type { ProductionModulePayload, WarehouseModulePayload } from '@/src/types/production';
 import { productionModuleSchema, warehouseModuleSchema } from '@/src/lib/erp/production-zod';
+import { moneyFromNumber, moneyToNumber, qtyFromNumber, qtyToNumber } from '@/src/lib/money/decimal';
+import { WarehouseReceiptStatus } from '@prisma/client';
+import {
+  labelCustomerOrderStatus,
+  labelProductionOrderStatus,
+  labelWarehouseVoucherStatus,
+  parseCustomerOrderStatus,
+  parseProductionOrderStatus,
+  parseWarehouseVoucherStatus,
+} from '@/src/lib/erp/flow-status';
 
 export class ProductionValidationError extends Error {
   code = 'VALIDATION';
   constructor(message: string) {
     super(message);
   }
+}
+
+async function catalogProductIdByCode(businessId: string, itemCode: string): Promise<string | null> {
+  const code = itemCode?.trim();
+  if (!code) return null;
+  const row = await prisma.catalogProduct.findFirst({
+    where: { businessId, code },
+    select: { productId: true },
+  });
+  return row?.productId ?? null;
 }
 
 export async function getWarehouseModule(businessId: string): Promise<WarehouseModulePayload> {
@@ -28,10 +48,10 @@ export async function getWarehouseModule(businessId: string): Promise<WarehouseM
       id: v.id,
       number: v.number,
       date: v.date,
-      status: v.status,
+      status: labelWarehouseVoucherStatus(v.status),
       description: v.description,
       type: v.type === 'transfer' ? 'transfer' : 'issue',
-      warehouseReceiptStatus: v.warehouseReceiptStatus === 'posted' ? 'posted' : 'pending',
+      warehouseReceiptStatus: v.warehouseReceiptStatus === WarehouseReceiptStatus.posted ? 'posted' : 'pending',
       sourceInvoiceNumber: v.sourceInvoiceNumber,
       sourceWarehouseId: v.sourceWarehouseId,
       destinationWarehouseId: v.destinationWarehouseId,
@@ -39,9 +59,9 @@ export async function getWarehouseModule(businessId: string): Promise<WarehouseM
         id: it.id,
         itemCode: it.itemCode,
         title: it.title,
-        requestedQty: it.requestedQty,
-        availableQty: it.availableQty,
-        quantity: it.quantity,
+        requestedQty: qtyToNumber(it.requestedQty),
+        availableQty: qtyToNumber(it.availableQty),
+        quantity: qtyToNumber(it.quantity),
         unit: it.unit,
       })),
     })),
@@ -54,8 +74,8 @@ export async function getWarehouseModule(businessId: string): Promise<WarehouseM
         id: r.id,
         itemCode: r.itemCode,
         title: r.title,
-        systemQty: r.systemQty,
-        countedQty: r.countedQty,
+        systemQty: qtyToNumber(r.systemQty),
+        countedQty: qtyToNumber(r.countedQty),
       })),
     })),
   };
@@ -73,29 +93,37 @@ export async function saveWarehouseModule(
     await tx.stocktakingSession.deleteMany({ where: { businessId } });
 
     for (const v of payload.vouchers) {
+      const lineCreates = [];
+      for (const it of v.items) {
+        const catalogProductId = await catalogProductIdByCode(businessId, it.itemCode);
+        lineCreates.push({
+          businessId,
+          itemCode: it.itemCode,
+          catalogProductId,
+          title: it.title,
+          requestedQty: qtyFromNumber(it.requestedQty),
+          availableQty: qtyFromNumber(it.availableQty),
+          quantity: qtyFromNumber(it.quantity),
+          unit: it.unit,
+        });
+      }
       await tx.warehouseVoucher.create({
         data: {
           id: v.id,
           businessId,
           number: v.number,
           date: v.date,
-          status: v.status,
+          status: parseWarehouseVoucherStatus(v.status),
           description: v.description,
           type: v.type,
-          warehouseReceiptStatus: v.warehouseReceiptStatus,
+          warehouseReceiptStatus:
+            v.warehouseReceiptStatus === 'posted'
+              ? WarehouseReceiptStatus.posted
+              : WarehouseReceiptStatus.pending,
           sourceInvoiceNumber: v.sourceInvoiceNumber,
           sourceWarehouseId: v.sourceWarehouseId,
           destinationWarehouseId: v.destinationWarehouseId,
-          items: {
-            create: v.items.map((it) => ({
-              itemCode: it.itemCode,
-              title: it.title,
-              requestedQty: it.requestedQty,
-              availableQty: it.availableQty,
-              quantity: it.quantity,
-              unit: it.unit,
-            })),
-          },
+          items: { create: lineCreates },
         },
       });
     }
@@ -112,8 +140,8 @@ export async function saveWarehouseModule(
             create: s.rows.map((r) => ({
               itemCode: r.itemCode,
               title: r.title,
-              systemQty: r.systemQty,
-              countedQty: r.countedQty,
+              systemQty: qtyFromNumber(r.systemQty),
+              countedQty: qtyFromNumber(r.countedQty),
             })),
           },
         },
@@ -143,7 +171,7 @@ export async function getProductionModule(businessId: string): Promise<Productio
       customer: o.customer,
       items: o.items,
       date: o.date,
-      status: o.status,
+      status: labelCustomerOrderStatus(o.status),
       progress: o.progress,
       type: o.type === 'processing' || o.type === 'completed' ? o.type : 'new',
       amount: o.amount || undefined,
@@ -170,13 +198,31 @@ export async function getProductionModule(businessId: string): Promise<Productio
       description: f.description,
       materials: f.rows
         .filter((r) => r.kind === 'material')
-        .map((r) => ({ id: r.id, title: r.title, unit: r.unit, qty: r.qty, amount: r.amount })),
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          unit: r.unit,
+          qty: qtyToNumber(r.qty),
+          amount: moneyToNumber(r.amount),
+        })),
       directLabor: f.rows
         .filter((r) => r.kind === 'direct_labor')
-        .map((r) => ({ id: r.id, title: r.title, unit: r.unit, qty: r.qty, amount: r.amount })),
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          unit: r.unit,
+          qty: qtyToNumber(r.qty),
+          amount: moneyToNumber(r.amount),
+        })),
       overhead: f.rows
         .filter((r) => r.kind === 'overhead')
-        .map((r) => ({ id: r.id, title: r.title, unit: r.unit, qty: r.qty, amount: r.amount })),
+        .map((r) => ({
+          id: r.id,
+          title: r.title,
+          unit: r.unit,
+          qty: qtyToNumber(r.qty),
+          amount: moneyToNumber(r.amount),
+        })),
     })),
     productionOrders: productionOrders.map((p) => ({
       id: p.id,
@@ -185,10 +231,10 @@ export async function getProductionModule(businessId: string): Promise<Productio
       customer: p.customer,
       date: p.date,
       priority: p.priority,
-      status: p.status,
+      status: labelProductionOrderStatus(p.status),
       deliveryDate: p.deliveryDate,
-      qtyPlanned: p.qtyPlanned,
-      qtyDone: p.qtyDone,
+      qtyPlanned: qtyToNumber(p.qtyPlanned),
+      qtyDone: qtyToNumber(p.qtyDone),
     })),
     workOrders: workOrders.map((w) => ({
       id: w.id,
@@ -226,7 +272,7 @@ export async function saveProductionModule(
           customer: o.customer,
           items: o.items,
           date: o.date,
-          status: o.status,
+          status: parseCustomerOrderStatus(o.status),
           progress: o.progress,
           type: o.type,
           amount: o.amount ?? '',
@@ -269,22 +315,22 @@ export async function saveProductionModule(
                 kind: 'material' as const,
                 title: m.title,
                 unit: m.unit,
-                qty: m.qty,
-                amount: m.amount,
+                qty: qtyFromNumber(m.qty),
+                amount: moneyFromNumber(m.amount),
               })),
               ...f.directLabor.map((m) => ({
                 kind: 'direct_labor' as const,
                 title: m.title,
                 unit: m.unit,
-                qty: m.qty,
-                amount: m.amount,
+                qty: qtyFromNumber(m.qty),
+                amount: moneyFromNumber(m.amount),
               })),
               ...f.overhead.map((m) => ({
                 kind: 'overhead' as const,
                 title: m.title,
                 unit: m.unit,
-                qty: m.qty,
-                amount: m.amount,
+                qty: qtyFromNumber(m.qty),
+                amount: moneyFromNumber(m.amount),
               })),
             ],
           },
@@ -302,10 +348,10 @@ export async function saveProductionModule(
           customer: p.customer,
           date: p.date,
           priority: p.priority,
-          status: p.status,
+          status: parseProductionOrderStatus(p.status),
           deliveryDate: p.deliveryDate,
-          qtyPlanned: p.qtyPlanned,
-          qtyDone: p.qtyDone,
+          qtyPlanned: qtyFromNumber(p.qtyPlanned),
+          qtyDone: qtyFromNumber(p.qtyDone),
         },
       });
     }

@@ -146,7 +146,6 @@ export type MeizitoChatMessage = {
   attachmentNames: string[];
   attachmentRefs?: AttachmentRef[];
   voiceDurationSec?: number;
-  imageDataUrl?: string;
   editedAt?: string;
 };
 

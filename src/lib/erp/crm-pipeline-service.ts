@@ -1,10 +1,13 @@
+import { CrmLeadStatus } from '@prisma/client';
 import { prisma } from '@/src/lib/db/prisma';
 import {
   crmOpportunitySchema,
   crmPipelineStageSchema,
 } from '@/src/lib/erp/person-zod';
-import { PeopleNotFoundError } from '@/src/lib/erp/people-service';
+import { PeopleNotFoundError, requirePersonInBusiness } from '@/src/lib/erp/people-service';
 import type { CrmOpportunity, CrmPipelineStage } from '@/src/types/crm';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import type { Prisma } from '@prisma/client';
 
 const defaultStages = ['سرنخ جدید', 'در حال پیگیری', 'پیش فاکتور', 'بستن معامله'];
 
@@ -40,7 +43,7 @@ function mapOpp(r: {
   title: string;
   leadId: string | null;
   personId: string | null;
-  amount: number | null;
+  amount: Prisma.Decimal | number | null;
   expectedClose: string;
   sortOrder: number;
 }): CrmOpportunity {
@@ -50,7 +53,7 @@ function mapOpp(r: {
     title: r.title,
     leadId: r.leadId ?? undefined,
     personId: r.personId ?? undefined,
-    amount: r.amount ?? undefined,
+    amount: r.amount != null ? moneyToNumber(r.amount) : undefined,
     expectedClose: r.expectedClose,
     sortOrder: r.sortOrder,
   };
@@ -112,6 +115,7 @@ export async function createCrmOpportunity(businessId: string, raw: unknown): Pr
   const body = crmOpportunitySchema.parse(raw);
   const stage = await prisma.crmPipelineStage.findFirst({ where: { id: body.stageId, businessId } });
   if (!stage) throw new PeopleNotFoundError('مرحله نامعتبر است.');
+  if (body.personId?.trim()) await requirePersonInBusiness(businessId, body.personId);
   const max = await prisma.crmOpportunity.aggregate({
     where: { businessId, stageId: body.stageId },
     _max: { sortOrder: true },
@@ -123,7 +127,7 @@ export async function createCrmOpportunity(businessId: string, raw: unknown): Pr
       title: body.title,
       leadId: body.leadId ?? null,
       personId: body.personId ?? null,
-      amount: body.amount ?? null,
+      amount: body.amount != null ? moneyFromNumber(body.amount) : null,
       expectedClose: body.expectedClose ?? '',
       sortOrder: body.sortOrder ?? (max._max.sortOrder ?? -1) + 1,
     },
@@ -143,6 +147,9 @@ export async function updateCrmOpportunity(
     const stage = await prisma.crmPipelineStage.findFirst({ where: { id: body.stageId, businessId } });
     if (!stage) throw new PeopleNotFoundError('مرحله نامعتبر است.');
   }
+  if (body.personId !== undefined && body.personId?.trim()) {
+    await requirePersonInBusiness(businessId, body.personId);
+  }
   const row = await prisma.crmOpportunity.update({
     where: { id: opportunityId },
     data: {
@@ -150,7 +157,7 @@ export async function updateCrmOpportunity(
       title: body.title,
       leadId: body.leadId,
       personId: body.personId,
-      amount: body.amount,
+      amount: body.amount !== undefined ? (body.amount != null ? moneyFromNumber(body.amount) : null) : undefined,
       expectedClose: body.expectedClose,
       sortOrder: body.sortOrder,
     },
@@ -178,7 +185,7 @@ export async function getCrmSummaryStats(businessId: string): Promise<{
       prisma.crmLead.count({ where: { businessId } }),
       prisma.crmVisit.count({ where: { businessId } }),
       prisma.crmOpportunity.count({ where: { businessId } }),
-      prisma.crmLead.count({ where: { businessId, status: 'تبدیل‌شده' } }),
+      prisma.crmLead.count({ where: { businessId, status: CrmLeadStatus.converted } }),
       prisma.crmClubMember.count({ where: { businessId } }),
       prisma.person.count({ where: { businessId } }),
     ]);

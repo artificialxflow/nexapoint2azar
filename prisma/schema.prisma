@@ -160,10 +160,96 @@ enum InquiryStatus {
   closed
 }
 
+// --- Money (v11): amounts in whole rials @db.Decimal(20, 0); FX rates @db.Decimal(18, 6) ---
+
 enum PublishStatus {
   draft
   published
   archived
+}
+
+enum InternalLetterStatus {
+  open
+  closed
+}
+
+enum InternalLetterBox {
+  inbox
+  outbox
+  archive
+}
+
+enum MeizitoApprovalState {
+  draft
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+enum WorkRequestStatus {
+  open
+  closed
+}
+
+enum WorkRequestPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum WorkRequestBox {
+  inbox
+  outbox
+  archive
+}
+
+enum CustomerOrderStatus {
+  pending_approval
+  confirmed
+  in_production
+  completed
+  cancelled
+}
+
+enum ProductionOrderStatus {
+  pending_approval
+  in_production
+  completed
+  cancelled
+}
+
+enum StoreOrderStatus {
+  pending_processing
+  processing
+  shipped
+  completed
+  cancelled
+}
+
+enum WarehouseVoucherStatus {
+  draft
+  posted
+  cancelled
+}
+
+enum WarehouseReceiptStatus {
+  pending
+  posted
+}
+
+enum CrmLeadStatus {
+  new
+  in_progress
+  contact_failed
+  converted
+}
+
+enum CrmClubMemberStatus {
+  active
+  inactive
+  suspended
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +290,15 @@ model User {
   invitesCreated    UserInvite[]     @relation("InviteCreatedBy")
   accessReviews     AccessRequest[]  @relation("AccessReviewedBy")
   restriction       UserRestriction?
-  bankAccess        UserBankAccess[]
-  attachments       Attachment[]
+  bankAccess            UserBankAccess[]
+  attachments           Attachment[]
+  phoneDirectoryEntries PhoneDirectoryEntry[]
+  salesNetworkMembers   SalesNetworkMember[]
+  workspaceBoardMembers WorkspaceBoardMember[]
+  workspaceCardsAssigned     WorkspaceCard[]           @relation("CardAssignee")
+  workspaceProjectMembers    WorkspaceProjectMember[]
+  chatThreadParticipants     ChatThreadParticipant[]
+  internalLetterRecipients   InternalLetterRecipient[]
 }
 
 model Session {
@@ -318,7 +411,8 @@ model Business {
   profile     BusinessProfile?
   fiscalYears FiscalYear[]
   projects    BusinessProject[]
-  attachments Attachment[]
+  attachments       Attachment[]
+  entityAttachments EntityAttachment[]
 
   // Settings
   exchangeRates     ExchangeRate[]
@@ -378,13 +472,16 @@ model Business {
   workspaceNotes        WorkspaceNote[]
   workspaceDailyReports WorkspaceDailyReport[]
   workspaceFieldVisits  WorkspaceFieldVisit[]
-  workspaceProjects     WorkspaceProject[]
-  noteBoards            NoteBoard[]
-  internalLetters       InternalLetter[]
+  workspaceProjects          WorkspaceProject[]
+  workspaceProjectMembers    WorkspaceProjectMember[]
+  noteBoards                 NoteBoard[]
+  internalLetters            InternalLetter[]
+  internalLetterRecipients   InternalLetterRecipient[]
   meizitoCalendars      MeizitoCalendar[]
   meizitoCalendarEvents MeizitoCalendarEvent[]
-  chatThreads           ChatThread[]
-  chatMessages          ChatMessage[]
+  chatThreads              ChatThread[]
+  chatThreadParticipants   ChatThreadParticipant[]
+  chatMessages             ChatMessage[]
   internalWorkRequests  InternalWorkRequest[]
   meizitoApprovalSteps  MeizitoApprovalStep[]
   letterCategoryConfigs LetterCategoryConfig[]
@@ -500,7 +597,7 @@ model ExchangeRate {
   businessId   String
   code         String
   nameFa       String
-  rateToRial   Float    @default(0)
+  rateToRial   Decimal  @default(0) @db.Decimal(18, 6)
   effectiveAt  String   @default("")
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -576,9 +673,26 @@ model Attachment {
   isPublic     Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  business Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  uploader User?     @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  business          Business?          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  uploader          User?              @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  entityAttachments EntityAttachment[]
 
+  @@index([businessId, entityType, entityId])
+}
+
+model EntityAttachment {
+  id           String   @id @default(cuid())
+  businessId   String
+  entityType   String
+  entityId     String
+  attachmentId String
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  attachment Attachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, attachmentId])
   @@index([businessId, entityType, entityId])
 }
 
@@ -599,6 +713,15 @@ model Person {
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
+  shareholderRecords    ShareholderRecord[]
+  vendorRecords         VendorRecord[]
+  crmClubMembers        CrmClubMember[]
+  crmOpportunities      CrmOpportunity[]
+  phoneDirectoryEntries PhoneDirectoryEntry[]
+  salesNetworkMembers   SalesNetworkMember[]
+  workspaceBoardMembers WorkspaceBoardMember[]
+  workspaceProjectMembers WorkspaceProjectMember[]
+
   @@id([businessId, personId])
   @@index([businessId])
   @@index([businessId, status])
@@ -618,7 +741,7 @@ model MoneyDocument {
   businessId String
   kind       MoneyDocumentKind
   docDate    String            @default("")
-  totalAmount Float            @default(0)
+  totalAmount Decimal          @default(0) @db.Decimal(20, 0)
   data       Json
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
@@ -632,11 +755,12 @@ model ShareholderRecord {
   id         String   @id @default(cuid())
   businessId String
   personId   String
-  percent    Float
+  percent    Decimal  @db.Decimal(18, 6)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  person   Person   @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: Cascade)
 
   @@unique([businessId, personId])
   @@index([businessId])
@@ -646,14 +770,15 @@ model VendorRecord {
   id             String   @id @default(cuid())
   businessId     String
   personId       String
-  sellPercent    Float    @default(0)
-  refundPercent  Float    @default(0)
+  sellPercent    Decimal  @default(0) @db.Decimal(18, 6)
+  refundPercent  Decimal  @default(0) @db.Decimal(18, 6)
   expenseAccount String   @default("")
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  person   Person   @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: Cascade)
 
   @@unique([businessId, personId])
   @@index([businessId])
@@ -672,6 +797,10 @@ model CatalogProduct {
   updatedAt      DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  storeProducts           StoreProduct[]
+  warehouseItems          WarehouseItem[]
+  warehouseVoucherItems   WarehouseVoucherItem[]
 
   @@id([businessId, productId])
   @@index([businessId])
@@ -698,13 +827,13 @@ model CrmLead {
   source         String   @default("")
   interest       String   @default("")
   registeredDate String   @default("")
-  status         String   @default("جدید")
+  status         CrmLeadStatus @default(new)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
-  @@index([businessId])
+  @@index([businessId, status])
 }
 
 model CrmVisit {
@@ -751,7 +880,7 @@ model CrmOpportunity {
   title         String
   leadId        String?
   personId      String?
-  amount        Float?
+  amount        Decimal? @db.Decimal(20, 0)
   expectedClose String   @default("")
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
@@ -759,6 +888,7 @@ model CrmOpportunity {
 
   business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
   stage    CrmPipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  person   Person?          @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
 
   @@index([businessId])
   @@index([stageId])
@@ -773,12 +903,13 @@ model CrmClubMember {
   level      String   @default("")
   score      Int      @default(0)
   lastVisit  String   @default("")
-  status     String   @default("فعال")
+  status     CrmClubMemberStatus @default(active)
   source     String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  person   Person?  @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
 
   @@index([businessId])
 }
@@ -792,7 +923,7 @@ model CommerceDocument {
   businessId  String
   kind        CommerceDocumentKind
   docDate     String               @default("")
-  totalAmount Float                @default(0)
+  totalAmount Decimal              @default(0) @db.Decimal(20, 0)
   status      String               @default("confirmed")
   data        Json
   createdAt   DateTime             @default(now())
@@ -829,22 +960,30 @@ model WarehouseLocation {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business      Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  warehouseItems WarehouseItem[]
 
   @@unique([businessId, code])
   @@index([businessId])
 }
 
 model WarehouseItem {
-  id         String   @id @default(cuid())
-  businessId String
-  data       Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  businessId          String
+  catalogProductId    String
+  warehouseLocationId String?
+  stockQty            Decimal  @default(0) @db.Decimal(20, 3)
+  unit                String   @default("عدد")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business          Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  catalogProduct    CatalogProduct     @relation(fields: [businessId, catalogProductId], references: [businessId, productId], onDelete: Cascade)
+  warehouseLocation WarehouseLocation? @relation(fields: [warehouseLocationId], references: [id], onDelete: SetNull)
 
+  @@unique([businessId, catalogProductId, warehouseLocationId])
   @@index([businessId])
+  @@index([businessId, catalogProductId])
 }
 
 model WarehouseVoucher {
@@ -852,10 +991,10 @@ model WarehouseVoucher {
   businessId             String
   number                 String
   date                   String               @default("")
-  status                 String               @default("ثبت شده")
+  status                 WarehouseVoucherStatus @default(posted)
   description            String               @default("")
   type                   WarehouseVoucherType @default(issue)
-  warehouseReceiptStatus String               @default("pending")
+  warehouseReceiptStatus WarehouseReceiptStatus @default(pending)
   sourceInvoiceNumber    String               @default("")
   sourceWarehouseId      String               @default("")
   destinationWarehouseId String               @default("")
@@ -869,18 +1008,22 @@ model WarehouseVoucher {
 }
 
 model WarehouseVoucherItem {
-  id           String  @id @default(cuid())
-  voucherId    String
-  itemCode     String  @default("")
-  title        String  @default("")
-  requestedQty Float   @default(0)
-  availableQty Float   @default(0)
-  quantity     Float   @default(0)
-  unit         String  @default("عدد")
+  id               String  @id @default(cuid())
+  voucherId        String
+  businessId       String
+  itemCode         String  @default("")
+  catalogProductId String?
+  title            String  @default("")
+  requestedQty     Decimal @default(0) @db.Decimal(20, 3)
+  availableQty     Decimal @default(0) @db.Decimal(20, 3)
+  quantity         Decimal @default(0) @db.Decimal(20, 3)
+  unit             String  @default("عدد")
 
-  voucher WarehouseVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucher        WarehouseVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  catalogProduct CatalogProduct?  @relation(fields: [businessId, catalogProductId], references: [businessId, productId], onDelete: SetNull)
 
   @@index([voucherId])
+  @@index([businessId, catalogProductId])
 }
 
 model StocktakingSession {
@@ -903,8 +1046,8 @@ model StocktakingRow {
   sessionId  String
   itemCode   String @default("")
   title      String @default("")
-  systemQty  Float  @default(0)
-  countedQty Float  @default(0)
+  systemQty  Decimal @default(0) @db.Decimal(20, 3)
+  countedQty Decimal @default(0) @db.Decimal(20, 3)
 
   session StocktakingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -918,11 +1061,11 @@ model CustomerOrder {
   customer   String
   items      String   @default("")
   date       String   @default("")
-  status     String   @default("در انتظار تایید")
+  status     CustomerOrderStatus @default(pending_approval)
   progress   Int      @default(0)
   type       String   @default("new")
   amount     String   @default("")
-  totalRial  Float    @default(0)
+  totalRial  Decimal  @default(0) @db.Decimal(20, 0)
   notes      String   @default("")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -931,6 +1074,7 @@ model CustomerOrder {
   shippingSchedules ShippingSchedule[]
 
   @@index([businessId, type])
+  @@index([businessId, status])
 }
 
 model ShippingSchedule {
@@ -998,8 +1142,8 @@ model ProductionFormulaRow {
   kind      FormulaRowKind @default(material)
   title     String         @default("")
   unit      String         @default("عدد")
-  qty       Float          @default(0)
-  amount    Float          @default(0)
+  qty       Decimal        @default(0) @db.Decimal(20, 3)
+  amount    Decimal        @default(0) @db.Decimal(20, 0)
 
   formula ProductionFormula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
 
@@ -1014,10 +1158,10 @@ model ProductionOrder {
   customer     String   @default("")
   date         String   @default("")
   priority     Int      @default(1)
-  status       String   @default("در حال تولید")
+  status       ProductionOrderStatus @default(in_production)
   deliveryDate String   @default("")
-  qtyPlanned   Float    @default(0)
-  qtyDone      Float    @default(0)
+  qtyPlanned   Decimal  @default(0) @db.Decimal(20, 3)
+  qtyDone      Decimal  @default(0) @db.Decimal(20, 3)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -1058,8 +1202,8 @@ model BankAccount {
   cardNumber     String   @default("")
   iban           String   @default("")
   currency       String   @default("تومان")
-  openingBalance Float    @default(0)
-  balance        Float    @default(0)
+  openingBalance Decimal @default(0) @db.Decimal(20, 0)
+  balance        Decimal @default(0) @db.Decimal(20, 0)
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1077,7 +1221,7 @@ model Cashbox {
   name       String
   keeperName String   @default("")
   currency   String   @default("تومان")
-  balance    Float    @default(0)
+  balance    Decimal @default(0) @db.Decimal(20, 0)
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -1093,8 +1237,8 @@ model PettyCash {
   businessId  String
   title       String
   holderName  String   @default("")
-  limitAmount Float    @default(0)
-  balance     Float    @default(0)
+  limitAmount Decimal @default(0) @db.Decimal(20, 0)
+  balance     Decimal @default(0) @db.Decimal(20, 0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1112,8 +1256,8 @@ model BankTransaction {
   cashboxId        String?
   pettyCashId      String?
   type             BankTransactionType @default(deposit)
-  amount           Float               @default(0)
-  date             String              @default("")
+  amount           Decimal             @default(0) @db.Decimal(20, 0)
+  date             DateTime?           @db.Date
   counterpartyName String              @default("")
   referenceNo      String              @default("")
   description      String              @default("")
@@ -1126,6 +1270,7 @@ model BankTransaction {
   pettyCash   PettyCash?   @relation(fields: [pettyCashId], references: [id], onDelete: SetNull)
 
   @@index([businessId, type])
+  @@index([businessId, date])
 }
 
 model FundTransfer {
@@ -1133,9 +1278,9 @@ model FundTransfer {
   businessId  String
   fromSource  String
   toTarget    String
-  amount      Float    @default(0)
-  fee         Float    @default(0)
-  date        String   @default("")
+  amount      Decimal @default(0) @db.Decimal(20, 0)
+  fee         Decimal @default(0) @db.Decimal(20, 0)
+  date        DateTime? @db.Date
   referenceNo String   @default("")
   description String   @default("")
   createdAt   DateTime @default(now())
@@ -1144,6 +1289,7 @@ model FundTransfer {
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
+  @@index([businessId, date])
 }
 
 model CheckItem {
@@ -1155,9 +1301,9 @@ model CheckItem {
   sayadId       String         @default("")
   bankName      String         @default("")
   counterparty  String         @default("")
-  amount        Float          @default(0)
-  issueDate     String         @default("")
-  dueDate       String         @default("")
+  amount        Decimal        @default(0) @db.Decimal(20, 0)
+  issueDate     DateTime?      @db.Date
+  dueDate       DateTime?      @db.Date
   status        CheckStatus    @default(pending)
   notes         String         @default("")
   createdAt     DateTime       @default(now())
@@ -1167,6 +1313,7 @@ model CheckItem {
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
 
   @@index([businessId, direction, status])
+  @@index([businessId, dueDate])
 }
 
 model AccountingAccount {
@@ -1176,7 +1323,7 @@ model AccountingAccount {
   name       String
   type       AccountType @default(asset)
   parentCode String      @default("")
-  balance    Float       @default(0)
+  balance    Decimal     @default(0) @db.Decimal(20, 0)
   isSystem   Boolean     @default(false)
   isActive   Boolean     @default(true)
   createdAt  DateTime    @default(now())
@@ -1194,12 +1341,12 @@ model JournalEntry {
   businessId   String
   fiscalYearId String?
   entryNo      String
-  date         String        @default("")
+  date         DateTime?     @db.Date
   description  String        @default("")
   sourceModule String        @default("manual")
   status       JournalStatus @default(posted)
-  totalDebit   Float         @default(0)
-  totalCredit  Float         @default(0)
+  totalDebit   Decimal       @default(0) @db.Decimal(20, 0)
+  totalCredit  Decimal       @default(0) @db.Decimal(20, 0)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -1208,15 +1355,16 @@ model JournalEntry {
   lines      JournalLine[]
 
   @@index([businessId, status])
+  @@index([businessId, date])
 }
 
 model JournalLine {
   id             String @id @default(cuid())
   journalEntryId String
   accountId      String
-  description    String @default("")
-  debit          Float  @default(0)
-  credit         Float  @default(0)
+  description    String  @default("")
+  debit          Decimal @default(0) @db.Decimal(20, 0)
+  credit         Decimal @default(0) @db.Decimal(20, 0)
 
   journalEntry JournalEntry      @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account      AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
@@ -1262,12 +1410,12 @@ model WorkspaceColumn {
   boardId    String
   title      String
   order      Int      @default(0)
-  cardIds    Json     @default("[]")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  board    WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  board    WorkspaceBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards    WorkspaceCard[]
 
   @@index([businessId, boardId])
 }
@@ -1295,6 +1443,8 @@ model WorkspaceBoardMember {
 
   business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
   board    WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user     User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  person   Person?        @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
 
   @@index([businessId, boardId])
 }
@@ -1312,6 +1462,7 @@ model WorkspaceCard {
   checklist           Json     @default("[]")
   attachments         Json     @default("[]")
   dueDate             String   @default("")
+  dueOn               DateTime? @db.Date
   dueTime             String   @default("")
   recurrence          String   @default("none")
   starred             Boolean  @default(false)
@@ -1320,18 +1471,24 @@ model WorkspaceCard {
   addToCalendar       Boolean  @default(false)
   reminderMinutes     Int?
   assigneeUserId      String?
+  sortOrder           Int      @default(0)
   endDueDate          String   @default("")
+  endDueOn            DateTime? @db.Date
   sourceChatMessageId String?
   sourceChatThreadId  String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  board    WorkspaceBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  business       Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  board          WorkspaceBoard   @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column         WorkspaceColumn  @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  assigneeUser   User?            @relation("CardAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
 
   @@index([businessId, boardId])
   @@index([businessId, columnId])
+  @@index([businessId, columnId, sortOrder])
   @@index([businessId, sourceChatMessageId])
+  @@index([businessId, dueOn])
 }
 
 model NoteBoard {
@@ -1411,9 +1568,27 @@ model WorkspaceProject {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business       Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  projectMembers WorkspaceProjectMember[]
 
   @@index([businessId])
+}
+
+model WorkspaceProjectMember {
+  id          String  @id @default(cuid())
+  businessId  String
+  projectId   String
+  userId      String?
+  personId    String?
+  displayName String  @default("")
+  sortOrder   Int     @default(0)
+
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  project  WorkspaceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  person   Person?          @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
+
+  @@index([businessId, projectId])
 }
 
 model InternalLetter {
@@ -1423,8 +1598,8 @@ model InternalLetter {
   body                  String    @default("")
   labels                Json      @default("[]")
   category              String    @default("other")
-  status                String    @default("open")
-  box                   String    @default("inbox")
+  status                InternalLetterStatus @default(open)
+  box                   InternalLetterBox    @default(inbox)
   templateId            String?
   referredTo            Json      @default("[]")
   referredFrom          String    @default("")
@@ -1432,7 +1607,7 @@ model InternalLetter {
   replyToLetterId       String?
   threadId              String?
   attachments           Json      @default("[]")
-  approvalState         String?
+  approvalState         MeizitoApprovalState?
   currentAssigneeUserId String?
   submittedAt           DateTime?
   createdAt             DateTime  @default(now())
@@ -1453,7 +1628,9 @@ model InternalLetterRecipient {
   recipientUserId String?
   sortOrder       Int     @default(0)
 
-  letter InternalLetter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  letter   InternalLetter @relation(fields: [letterId], references: [id], onDelete: Cascade)
+  user     User?          @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
 
   @@index([businessId, letterId])
 }
@@ -1485,7 +1662,9 @@ model MeizitoCalendarEvent {
   calendarId      String
   title           String
   dateKey         String
+  startOn         DateTime?        @db.Date
   endDateKey      String?
+  endOn           DateTime?        @db.Date
   allDay          Boolean  @default(false)
   time            String?
   sourceCardId    String?
@@ -1506,6 +1685,7 @@ model MeizitoCalendarEvent {
   @@index([businessId, calendarId])
   @@index([businessId, dateKey])
   @@index([businessId, endDateKey])
+  @@index([businessId, startOn])
 }
 
 model ChatThread {
@@ -1520,10 +1700,26 @@ model ChatThread {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  messages ChatMessage[]
+  business     Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  messages     ChatMessage[]
+  participants ChatThreadParticipant[]
 
   @@index([businessId])
+}
+
+model ChatThreadParticipant {
+  id          String  @id @default(cuid())
+  businessId  String
+  threadId    String
+  userId      String?
+  displayName String  @default("")
+  sortOrder   Int     @default(0)
+
+  business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user     User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, threadId])
 }
 
 model ChatMessage {
@@ -1536,7 +1732,6 @@ model ChatMessage {
   attachmentNames  Json      @default("[]")
   attachmentRefs   Json      @default("[]")
   voiceDurationSec Int?
-  imageDataUrl     String?
   editedAt         DateTime?
   createdAt        DateTime  @default(now())
 
@@ -1551,13 +1746,13 @@ model InternalWorkRequest {
   businessId            String
   subject               String
   body                  String    @default("")
-  status                String    @default("open")
-  priority              String    @default("medium")
+  status                WorkRequestStatus   @default(open)
+  priority              WorkRequestPriority @default(medium)
   category              String    @default("")
   requestKind           String    @default("admin")
   hrSubtype             String?
   hrFormPayload         Json?
-  box                   String    @default("outbox")
+  box                   WorkRequestBox      @default(outbox)
   authorUserId          String    @default("")
   authorName            String    @default("")
   referredToUserIds     Json      @default("[]")
@@ -1567,7 +1762,7 @@ model InternalWorkRequest {
   threadId              String?
   replyToRequestId      String?
   sourceChatMessageId   String?
-  approvalState         String?
+  approvalState         MeizitoApprovalState?
   currentAssigneeUserId String?
   submittedAt           DateTime?
   closedAt              DateTime?
@@ -1655,6 +1850,8 @@ model PhoneDirectoryEntry {
 
   business Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
   group    PhoneDirectoryGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  user     User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  person   Person?              @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
 
   @@index([businessId])
   @@index([businessId, department])
@@ -1755,7 +1952,7 @@ model AttendanceLog {
   businessId      String
   userId          String?
   employeeName    String
-  workDate        String
+  workDate        DateTime?        @db.Date
   checkIn         String           @default("")
   checkOut        String           @default("")
   workedMinutes   Int              @default(0)
@@ -1776,11 +1973,11 @@ model PayrollPeriodSummary {
   userId       String?
   employeeName String
   periodLabel  String
-  baseSalary   Float    @default(0)
-  overtimePay  Float    @default(0)
-  bonuses      Float    @default(0)
-  deductions   Float    @default(0)
-  netPay       Float    @default(0)
+  baseSalary   Decimal  @default(0) @db.Decimal(20, 0)
+  overtimePay  Decimal  @default(0) @db.Decimal(20, 0)
+  bonuses      Decimal  @default(0) @db.Decimal(20, 0)
+  deductions   Decimal  @default(0) @db.Decimal(20, 0)
+  netPay       Decimal  @default(0) @db.Decimal(20, 0)
   status       String   @default("در انتظار پرداخت")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1815,7 +2012,7 @@ model TrainingEnrollment {
   userId          String?
   participantName String
   progressPercent Int      @default(0)
-  score           Float?
+  score           Decimal? @db.Decimal(18, 6)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -1833,8 +2030,8 @@ model MarketingCampaign {
   businessId       String
   name             String
   channel          String         @default("اینستاگرام")
-  budget           Float          @default(0)
-  spent            Float          @default(0)
+  budget           Decimal        @default(0) @db.Decimal(20, 0)
+  spent            Decimal        @default(0) @db.Decimal(20, 0)
   leadsCount       Int            @default(0)
   conversionsCount Int            @default(0)
   startDate        String         @default("")
@@ -1887,13 +2084,17 @@ model SalesNetworkMember {
   phone          String   @default("")
   region         String   @default("")
   tier           String   @default("نماینده")
-  commissionRate Float    @default(5)
-  totalSales     Float    @default(0)
+  personId       String?
+  userId         String?
+  commissionRate Decimal  @default(5) @db.Decimal(18, 6)
+  totalSales     Decimal  @default(0) @db.Decimal(20, 0)
   active         Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  person      Person?           @relation(fields: [businessId, personId], references: [businessId, personId], onDelete: SetNull)
+  user        User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   commissions SalesCommission[]
 
   @@index([businessId])
@@ -1904,8 +2105,8 @@ model SalesCommission {
   businessId       String
   memberId         String
   periodLabel      String
-  salesAmount      Float    @default(0)
-  commissionAmount Float    @default(0)
+  salesAmount      Decimal  @default(0) @db.Decimal(20, 0)
+  commissionAmount Decimal  @default(0) @db.Decimal(20, 0)
   status           String   @default("در انتظار تسویه")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1962,9 +2163,9 @@ model AfterSalesTicket {
 model RepairEstimate {
   id                 String   @id @default(cuid())
   ticketId           String
-  laborCost          Float    @default(0)
-  partsCost          Float    @default(0)
-  totalCost          Float    @default(0)
+  laborCost          Decimal  @default(0) @db.Decimal(20, 0)
+  partsCost          Decimal  @default(0) @db.Decimal(20, 0)
+  totalCost          Decimal  @default(0) @db.Decimal(20, 0)
   approvedByCustomer Boolean  @default(false)
   notes              String   @default("")
   createdAt          DateTime @default(now())
@@ -2074,7 +2275,7 @@ model InquiryRecord {
   requesterPhone String        @default("")
   source         String        @default("تلفن")
   category       String        @default("استعلام قیمت")
-  estimatedValue Float         @default(0)
+  estimatedValue Decimal       @default(0) @db.Decimal(20, 0)
   assignedTo     String        @default("")
   status         InquiryStatus @default(new)
   responseNote   String        @default("")
@@ -2105,25 +2306,26 @@ model StoreSettings {
 }
 
 model StoreProduct {
-  id          String   @id @default(cuid())
-  businessId  String
-  name        String
-  category    String   @default("عمومی")
-  price       String   @default("0")
-  priceNum    Float    @default(0)
-  stock       String   @default("0")
-  stockQty    Int      @default(0)
-  seo         String   @default("")
-  description String   @default("")
-  imageKey    String?
-  featured    Boolean  @default(false)
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  businessId       String
+  catalogProductId String?
+  name             String
+  category         String   @default("عمومی")
+  priceNum         Decimal  @default(0) @db.Decimal(20, 0)
+  stockQty         Int      @default(0)
+  seo              String   @default("")
+  description      String   @default("")
+  imageKey         String?
+  featured         Boolean  @default(false)
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  business   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  orderItems StoreOrderItem[]
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  catalogProduct CatalogProduct?   @relation(fields: [businessId, catalogProductId], references: [businessId, productId], onDelete: SetNull)
+  orderItems     StoreOrderItem[]
 
+  @@unique([businessId, catalogProductId])
   @@index([businessId, status])
 }
 
@@ -2134,10 +2336,9 @@ model StoreOrder {
   customer        String
   customerPhone   String   @default("")
   shippingAddress String   @default("")
-  date            String   @default("")
-  total           String   @default("0")
-  totalNum        Float    @default(0)
-  status          String   @default("در انتظار پردازش")
+  date            DateTime? @db.Date
+  totalNum        Decimal  @default(0) @db.Decimal(20, 0)
+  status          StoreOrderStatus @default(pending_processing)
   notes           String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -2146,6 +2347,7 @@ model StoreOrder {
   items    StoreOrderItem[]
 
   @@index([businessId, status])
+  @@index([businessId, date])
 }
 
 model StoreOrderItem {
@@ -2154,8 +2356,8 @@ model StoreOrderItem {
   storeProductId String?
   title          String
   quantity       Int     @default(1)
-  unitPrice      Float   @default(0)
-  lineTotal      Float   @default(0)
+  unitPrice      Decimal @default(0) @db.Decimal(20, 0)
+  lineTotal      Decimal @default(0) @db.Decimal(20, 0)
 
   order        StoreOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   storeProduct StoreProduct? @relation(fields: [storeProductId], references: [id], onDelete: SetNull)
@@ -2199,9 +2401,8 @@ model BlogPost {
   content       String        @default("")
   coverImageKey String?
   author        String        @default("")
-  date          String        @default("")
+  date          DateTime?     @db.Date
   views         Int           @default(0)
-  status        String        @default("منتشر شده")
   publishState  PublishStatus @default(published)
   categoryName  String        @default("عمومی")
   createdAt     DateTime      @default(now())
@@ -2221,7 +2422,7 @@ model BlogComment {
   user      String
   email     String   @default("")
   text      String
-  date      String   @default("")
+  date      DateTime? @db.Date
   postTitle String   @default("")
   status    String   @default("در انتظار تایید")
   createdAt DateTime @default(now())

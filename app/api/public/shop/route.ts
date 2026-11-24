@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
 
 const orderSchema = z.object({
   businessId: z.string().optional(),
@@ -78,8 +79,8 @@ export async function GET(req: NextRequest) {
         id: p.id,
         name: p.name,
         category: p.category,
-        price: p.priceNum,
-        priceLabel: p.price,
+        price: moneyToNumber(p.priceNum),
+        priceLabel: moneyToNumber(p.priceNum).toLocaleString('fa-IR'),
         stockQty: p.stockQty,
         description: p.description,
         featured: p.featured,
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
     for (const item of body.items) {
       const prod = byId.get(item.productId);
       if (!prod) return jsonError('NOT_FOUND', 'یکی از کالاهای سبد خرید یافت نشد.', 404);
-      const unitPrice = prod.priceNum;
+      const unitPrice = moneyToNumber(prod.priceNum);
       const lineTotal = unitPrice * item.quantity;
       totalNum += lineTotal;
       lineCreates.push({
@@ -133,7 +134,8 @@ export async function POST(req: NextRequest) {
 
     const count = await prisma.storeOrder.count({ where: { businessId } });
     const orderNo = `SHP-${1001 + count}`;
-    const todayFa = new Intl.DateTimeFormat('fa-IR').format(new Date());
+    const { businessDateToPrismaDate } = await import('@/src/lib/dates/business-date');
+    const orderDate = businessDateToPrismaDate(new Date());
 
     const created = await prisma.storeOrder.create({
       data: {
@@ -142,12 +144,17 @@ export async function POST(req: NextRequest) {
         customer: body.customerName,
         customerPhone: body.customerPhone,
         shippingAddress: body.shippingAddress,
-        date: todayFa,
-        total: totalNum.toLocaleString('fa-IR'),
-        totalNum,
-        status: 'در انتظار پردازش',
+        date: orderDate,
+        totalNum: moneyFromNumber(totalNum),
+        status: 'pending_processing',
         notes: body.notes,
-        items: { create: lineCreates },
+        items: {
+          create: lineCreates.map((l) => ({
+            ...l,
+            unitPrice: moneyFromNumber(l.unitPrice),
+            lineTotal: moneyFromNumber(l.lineTotal),
+          })),
+        },
       },
       include: { items: true },
     });
@@ -156,7 +163,7 @@ export async function POST(req: NextRequest) {
       {
         id: created.id,
         orderNo: created.orderNo,
-        totalNum: created.totalNum,
+        totalNum: moneyToNumber(created.totalNum),
         status: created.status,
       },
       { status: 201 }

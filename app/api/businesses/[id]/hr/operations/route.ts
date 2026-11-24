@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import {
+  formatBusinessDateIso,
+  jalaliMonthRangeOnDb,
+  parseBusinessDateForDb,
+} from '@/src/lib/dates/business-date';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -63,8 +69,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const { id: businessId } = await ctx.params;
     await requireBusinessAccess(req, businessId);
 
+    const attendanceMonth = req.nextUrl.searchParams.get('attendanceMonth')?.trim() || '';
+    const attendanceRange = attendanceMonth ? jalaliMonthRangeOnDb(attendanceMonth) : null;
+
     const [attendanceLogs, payrollSummaries, trainingCourses] = await Promise.all([
-      prisma.attendanceLog.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' }, take: 200 }),
+      prisma.attendanceLog.findMany({
+        where: {
+          businessId,
+          ...(attendanceRange ? { workDate: { gte: attendanceRange.gte, lt: attendanceRange.lt } } : {}),
+        },
+        orderBy: [{ workDate: 'desc' }, { createdAt: 'desc' }],
+        take: 200,
+      }),
       prisma.payrollPeriodSummary.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' }, take: 200 }),
       prisma.trainingCourse.findMany({
         where: { businessId },
@@ -73,7 +89,21 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       }),
     ]);
 
-    return jsonOk({ attendanceLogs, payrollSummaries, trainingCourses });
+    return jsonOk({
+      attendanceLogs: attendanceLogs.map((a) => ({
+        ...a,
+        workDate: a.workDate ? formatBusinessDateIso(a.workDate) : '',
+      })),
+      payrollSummaries: payrollSummaries.map((p) => ({
+        ...p,
+        baseSalary: moneyToNumber(p.baseSalary),
+        overtimePay: moneyToNumber(p.overtimePay),
+        bonuses: moneyToNumber(p.bonuses),
+        deductions: moneyToNumber(p.deductions),
+        netPay: moneyToNumber(p.netPay),
+      })),
+      trainingCourses,
+    });
   } catch (err) {
     return handleAuthRouteError(err, 'hr.operations.get');
   }
@@ -86,12 +116,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const body = createSchema.parse(await req.json());
 
     if (body.entity === 'attendance') {
+      const workDate = parseBusinessDateForDb(body.workDate);
+      if (!workDate) {
+        return jsonError('VALIDATION_ERROR', 'تاریخ کار نامعتبر است.', 400);
+      }
       const created = await prisma.attendanceLog.create({
         data: {
           businessId,
           userId: body.userId ?? null,
           employeeName: body.employeeName,
-          workDate: body.workDate,
+          workDate,
           checkIn: body.checkIn,
           checkOut: body.checkOut,
           workedMinutes: body.workedMinutes,
@@ -104,18 +138,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     if (body.entity === 'payroll') {
-      const netPay = body.baseSalary + body.overtimePay + body.bonuses - body.deductions;
+      const netPayN = body.baseSalary + body.overtimePay + body.bonuses - body.deductions;
       const created = await prisma.payrollPeriodSummary.create({
         data: {
           businessId,
           userId: body.userId ?? null,
           employeeName: body.employeeName,
           periodLabel: body.periodLabel,
-          baseSalary: body.baseSalary,
-          overtimePay: body.overtimePay,
-          bonuses: body.bonuses,
-          deductions: body.deductions,
-          netPay,
+          baseSalary: moneyFromNumber(body.baseSalary),
+          overtimePay: moneyFromNumber(body.overtimePay),
+          bonuses: moneyFromNumber(body.bonuses),
+          deductions: moneyFromNumber(body.deductions),
+          netPay: moneyFromNumber(netPayN),
           status: body.status,
         },
       });

@@ -365,7 +365,6 @@ export interface MeizitoContextValue {
       attachmentNames?: string[];
       attachmentRefs?: AttachmentRef[];
       voiceDurationSec?: number;
-      imageDataUrl?: string;
     }
   ) => void;
   addThread: (title: string, threadType: MeizitoThreadType, participantNames?: string[]) => string;
@@ -1293,7 +1292,6 @@ export function MeizitoProvider({
         attachmentNames?: string[];
         attachmentRefs?: AttachmentRef[];
         voiceDurationSec?: number;
-        imageDataUrl?: string;
       }
     ) => {
       if (useChatApi && activeBusinessId) {
@@ -1359,7 +1357,6 @@ export function MeizitoProvider({
         attachmentNames: options?.attachmentNames ?? [],
         attachmentRefs: options?.attachmentRefs ?? [],
         voiceDurationSec: options?.voiceDurationSec,
-        imageDataUrl: options?.imageDataUrl,
       });
       setMessages((prev) => [...prev, msg]);
       setThreads((prev) =>

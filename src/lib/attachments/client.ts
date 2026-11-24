@@ -32,14 +32,24 @@ export async function uploadLocalAttachment(file: File, scope?: string): Promise
   };
 }
 
+export type ServerAttachmentLink = {
+  businessId?: string;
+  entityType?: string;
+  entityId?: string;
+};
+
 export async function uploadServerAttachment(
   file: File,
   scope?: string,
-  purpose?: ImageUploadPurpose
+  purpose?: ImageUploadPurpose,
+  link?: ServerAttachmentLink
 ): Promise<AttachmentRef> {
   const form = new FormData();
   form.append('file', file);
   if (purpose) form.append('purpose', purpose);
+  if (link?.businessId) form.append('businessId', link.businessId);
+  if (link?.entityType) form.append('entityType', link.entityType);
+  if (link?.entityId) form.append('entityId', link.entityId);
   const res = await fetch('/api/attachments', {
     method: 'POST',
     credentials: 'include',
@@ -64,9 +74,13 @@ export async function uploadServerAttachment(
   };
 }
 
-export async function uploadAttachment(file: File, scope?: string): Promise<AttachmentRef> {
+export async function uploadAttachment(
+  file: File,
+  scope?: string,
+  link?: ServerAttachmentLink
+): Promise<AttachmentRef> {
   if (FRONTEND_ONLY) return uploadLocalAttachment(file, scope);
-  return uploadServerAttachment(file, scope);
+  return uploadServerAttachment(file, scope, undefined, link);
 }
 
 export async function uploadBrandingImage(

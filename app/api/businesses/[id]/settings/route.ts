@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { rateFromNumber, rateToNumber } from '@/src/lib/money/decimal';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -66,7 +67,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ]);
 
     return jsonOk({
-      exchangeRates,
+      exchangeRates: exchangeRates.map((r) => ({
+        ...r,
+        rateToRial: rateToNumber(r.rateToRial),
+      })),
       formTemplates: formTemplates.map((t) => ({
         ...t,
         fields: Array.isArray(t.fieldsJson) ? t.fieldsJson : [],
@@ -92,13 +96,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           businessId,
           code: body.code.trim().toUpperCase(),
           nameFa: body.nameFa,
-          rateToRial: body.rateToRial,
+          rateToRial: rateFromNumber(body.rateToRial),
           effectiveAt: body.effectiveAt,
           active: body.active,
         },
         update: {
           nameFa: body.nameFa,
-          rateToRial: body.rateToRial,
+          rateToRial: rateFromNumber(body.rateToRial),
           effectiveAt: body.effectiveAt,
           active: body.active,
         },
@@ -171,7 +175,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         where: { id: body.id, businessId },
         data: {
           ...(typeof body.data.nameFa === 'string' ? { nameFa: body.data.nameFa } : {}),
-          ...(typeof body.data.rateToRial === 'number' ? { rateToRial: body.data.rateToRial } : {}),
+          ...(typeof body.data.rateToRial === 'number'
+            ? { rateToRial: rateFromNumber(body.data.rateToRial) }
+            : {}),
           ...(typeof body.data.effectiveAt === 'string' ? { effectiveAt: body.data.effectiveAt } : {}),
           ...(typeof body.data.active === 'boolean' ? { active: body.data.active } : {}),
         },

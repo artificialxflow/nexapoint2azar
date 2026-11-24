@@ -35,6 +35,5 @@ export function normalizeIncomingChatMessage(
     attachmentRefs: attachmentRefs as ChatSnapshot['messages'][0]['attachmentRefs'],
     voiceDurationSec:
       typeof raw.voiceDurationSec === 'number' ? raw.voiceDurationSec : undefined,
-    imageDataUrl: typeof raw.imageDataUrl === 'string' ? raw.imageDataUrl : undefined,
   };
 }

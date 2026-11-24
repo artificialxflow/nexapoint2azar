@@ -2,10 +2,12 @@ import { prisma } from '@/src/lib/db/prisma';
 import { saleInvoiceSchema } from '@/src/lib/erp/commerce-zod';
 import { moneyDocumentSchema } from '@/src/lib/erp/person-zod';
 import type { DashboardSummary } from '@/src/lib/dashboard/types';
+import { moneyToNumber } from '@/src/lib/money/decimal';
+import type { Prisma } from '@prisma/client';
 
-function sumMoneyDocLines(data: unknown, fallbackTotal: number): number {
+function sumMoneyDocLines(data: unknown, fallbackTotal: Prisma.Decimal | number): number {
   const parsed = moneyDocumentSchema.safeParse(data);
-  if (!parsed.success) return fallbackTotal || 0;
+  if (!parsed.success) return moneyToNumber(fallbackTotal);
   return parsed.data.lines.reduce((acc, line) => acc + (Number(line.amount) || 0), 0);
 }
 

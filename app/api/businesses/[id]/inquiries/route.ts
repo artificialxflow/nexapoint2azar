@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
 
 const createSchema = z.object({
   subject: z.string().min(1),
@@ -38,12 +39,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     });
 
     return jsonOk({
-      inquiries,
+      inquiries: inquiries.map((i) => ({
+        ...i,
+        estimatedValue: moneyToNumber(i.estimatedValue),
+      })),
       summary: {
         total: inquiries.length,
         open: inquiries.filter((i) => i.status === 'new' || i.status === 'in_review').length,
         quoted: inquiries.filter((i) => i.status === 'quoted').length,
-        totalValue: inquiries.reduce((s, i) => s + i.estimatedValue, 0),
+        totalValue: inquiries.reduce((s, i) => s + moneyToNumber(i.estimatedValue), 0),
       },
     });
   } catch (err) {
@@ -67,7 +71,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         requesterPhone: body.requesterPhone,
         source: body.source,
         category: body.category,
-        estimatedValue: body.estimatedValue,
+        estimatedValue: moneyFromNumber(body.estimatedValue),
         assignedTo: body.assignedTo,
         responseNote: body.responseNote,
       },
@@ -89,7 +93,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       data: {
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...(body.assignedTo !== undefined ? { assignedTo: body.assignedTo } : {}),
-        ...(body.estimatedValue !== undefined ? { estimatedValue: body.estimatedValue } : {}),
+        ...(body.estimatedValue !== undefined ? { estimatedValue: moneyFromNumber(body.estimatedValue) } : {}),
         ...(body.responseNote !== undefined ? { responseNote: body.responseNote } : {}),
       },
     });

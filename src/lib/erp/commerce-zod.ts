@@ -152,6 +152,7 @@ export const storeProductSchema = z.object({
   stock: z.string(),
   seo: z.string(),
   status: z.enum(['active', 'inactive']),
+  catalogProductId: z.string().optional(),
 });
 
 export const storeOrderSchema = z.object({

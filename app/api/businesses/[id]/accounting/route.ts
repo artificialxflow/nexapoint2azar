@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyBalancesEqual, moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import {
+  formatBusinessDateJalali,
+  jalaliMonthRangeOnDb,
+  parseBusinessDateForDb,
+} from '@/src/lib/dates/business-date';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -43,19 +49,25 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const { id: businessId } = await ctx.params;
     await requireBusinessAccess(req, businessId);
 
+    const journalMonth = req.nextUrl.searchParams.get('journalMonth')?.trim() || '';
+    const journalRange = journalMonth ? jalaliMonthRangeOnDb(journalMonth) : null;
+
     const [accounts, journals] = await Promise.all([
       prisma.accountingAccount.findMany({
         where: { businessId },
         orderBy: [{ code: 'asc' }],
       }),
       prisma.journalEntry.findMany({
-        where: { businessId },
+        where: {
+          businessId,
+          ...(journalRange ? { date: { gte: journalRange.gte, lt: journalRange.lt } } : {}),
+        },
         include: {
           lines: {
             include: { account: { select: { id: true, code: true, name: true, type: true } } },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
         take: 200,
       }),
     ]);
@@ -65,8 +77,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     for (const j of journals) {
       if (j.status === 'cancelled') continue;
       for (const l of j.lines) {
-        debitByAccount.set(l.accountId, (debitByAccount.get(l.accountId) ?? 0) + l.debit);
-        creditByAccount.set(l.accountId, (creditByAccount.get(l.accountId) ?? 0) + l.credit);
+        debitByAccount.set(l.accountId, (debitByAccount.get(l.accountId) ?? 0) + moneyToNumber(l.debit));
+        creditByAccount.set(l.accountId, (creditByAccount.get(l.accountId) ?? 0) + moneyToNumber(l.credit));
       }
     }
 
@@ -80,23 +92,39 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         type: acc.type,
         debit,
         credit,
-        netBalance: acc.balance + debit - credit,
+        netBalance: moneyToNumber(acc.balance) + debit - credit,
       };
     });
 
     const totalDebit = trialBalance.reduce((s, r) => s + r.debit, 0);
     const totalCredit = trialBalance.reduce((s, r) => s + r.credit, 0);
 
+    const accountsOut = accounts.map((a) => ({
+      ...a,
+      balance: moneyToNumber(a.balance),
+    }));
+    const journalsOut = journals.map((j) => ({
+      ...j,
+      date: j.date ? formatBusinessDateJalali(j.date) : '',
+      totalDebit: moneyToNumber(j.totalDebit),
+      totalCredit: moneyToNumber(j.totalCredit),
+      lines: j.lines.map((l) => ({
+        ...l,
+        debit: moneyToNumber(l.debit),
+        credit: moneyToNumber(l.credit),
+      })),
+    }));
+
     return jsonOk({
-      accounts,
-      journals,
+      accounts: accountsOut,
+      journals: journalsOut,
       trialBalance,
       summary: {
         accountsCount: accounts.length,
         journalsCount: journals.length,
         totalDebit,
         totalCredit,
-        isBalanced: Math.abs(totalDebit - totalCredit) < 0.01,
+        isBalanced: moneyBalancesEqual(totalDebit, totalCredit),
       },
     });
   } catch (err) {
@@ -118,7 +146,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           name: body.name.trim(),
           type: body.type,
           parentCode: body.parentCode,
-          balance: body.balance,
+          balance: moneyFromNumber(body.balance),
         },
       });
       return jsonOk(created, { status: 201 });
@@ -126,29 +154,34 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     const totalDebit = body.lines.reduce((s, l) => s + l.debit, 0);
     const totalCredit = body.lines.reduce((s, l) => s + l.credit, 0);
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+    if (!moneyBalancesEqual(totalDebit, totalCredit)) {
       return jsonError('UNBALANCED_JOURNAL', 'جمع بدهکار و بستانکار سند باید برابر باشد.', 400);
     }
 
     const count = await prisma.journalEntry.count({ where: { businessId } });
     const entryNo = body.entryNo.trim() || `DOC-${1001 + count}`;
 
+    const entryDate = parseBusinessDateForDb(body.date);
+    if (!entryDate) {
+      return jsonError('VALIDATION_ERROR', 'تاریخ سند نامعتبر است.', 400);
+    }
+
     const created = await prisma.journalEntry.create({
       data: {
         businessId,
         fiscalYearId: body.fiscalYearId ?? null,
         entryNo,
-        date: body.date,
+        date: entryDate,
         description: body.description,
         status: body.status,
-        totalDebit,
-        totalCredit,
+        totalDebit: moneyFromNumber(totalDebit),
+        totalCredit: moneyFromNumber(totalCredit),
         lines: {
           create: body.lines.map((l) => ({
             accountId: l.accountId,
             description: l.description,
-            debit: l.debit,
-            credit: l.credit,
+            debit: moneyFromNumber(l.debit),
+            credit: moneyFromNumber(l.credit),
           })),
         },
       },

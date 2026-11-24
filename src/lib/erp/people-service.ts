@@ -20,6 +20,13 @@ import type {
   VendorRecord,
 } from '@/src/types/person';
 import type { CrmClubMember, CrmLead, CrmVisit } from '@/src/types/crm';
+import {
+  labelCrmClubMemberStatus,
+  labelCrmLeadStatus,
+  parseCrmClubMemberStatus,
+  parseCrmLeadStatus,
+} from '@/src/lib/erp/flow-status';
+import { moneyFromNumber, rateFromNumber, rateToNumber } from '@/src/lib/money/decimal';
 
 export class PeopleNotFoundError extends Error {
   code = 'NOT_FOUND';
@@ -41,6 +48,24 @@ async function personIdSet(businessId: string): Promise<Set<string>> {
     select: { personId: true },
   });
   return new Set(rows.map((r) => r.personId));
+}
+
+/** v11 فاز ۲ — رد personId نامعتبر قبل از/همزمان با FK دیتابیس */
+export async function requirePersonInBusiness(businessId: string, personId: string): Promise<void> {
+  const id = personId?.trim();
+  if (!id) throw new PeopleModuleValidationError('شناسه شخص الزامی است.');
+  const row = await prisma.person.findUnique({
+    where: { businessId_personId: { businessId, personId: id } },
+    select: { personId: true },
+  });
+  if (!row) throw new PeopleNotFoundError('شخص برای این کسب‌وکار یافت نشد.');
+}
+
+export async function requireUserExists(userId: string): Promise<void> {
+  const id = userId?.trim();
+  if (!id) throw new PeopleModuleValidationError('شناسه کاربر الزامی است.');
+  const row = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!row) throw new PeopleNotFoundError('کاربر یافت نشد.');
 }
 
 function assertUniquePersonIds(rows: { personId: string }[], labelFa: string) {
@@ -252,7 +277,7 @@ export async function savePeopleModule(businessId: string, bundle: PeopleModuleB
           businessId,
           kind: 'receipt',
           docDate: doc.date || '',
-          totalAmount: sumMoneyDocAmount(doc),
+          totalAmount: moneyFromNumber(sumMoneyDocAmount(doc)),
           data: doc as unknown as Prisma.InputJsonValue,
         },
       });
@@ -263,7 +288,7 @@ export async function savePeopleModule(businessId: string, bundle: PeopleModuleB
           businessId,
           kind: 'payment',
           docDate: doc.date || '',
-          totalAmount: sumMoneyDocAmount(doc),
+          totalAmount: moneyFromNumber(sumMoneyDocAmount(doc)),
           data: doc as unknown as Prisma.InputJsonValue,
         },
       });
@@ -273,13 +298,13 @@ export async function savePeopleModule(businessId: string, bundle: PeopleModuleB
         data: {
           businessId,
           personId: row.personId,
-          percent: row.percent,
+          percent: rateFromNumber(row.percent),
         },
       });
       savedShareholders.push({
         id: created.id,
         personId: created.personId,
-        percent: created.percent,
+        percent: rateToNumber(created.percent),
       });
     }
     for (const row of vendorsOk) {
@@ -287,8 +312,8 @@ export async function savePeopleModule(businessId: string, bundle: PeopleModuleB
         data: {
           businessId,
           personId: row.personId,
-          sellPercent: row.sellPercent,
-          refundPercent: row.refundPercent,
+          sellPercent: rateFromNumber(row.sellPercent),
+          refundPercent: rateFromNumber(row.refundPercent),
           expenseAccount: row.expenseAccount,
           active: row.active,
         },
@@ -296,8 +321,8 @@ export async function savePeopleModule(businessId: string, bundle: PeopleModuleB
       savedVendors.push({
         id: created.id,
         personId: created.personId,
-        sellPercent: created.sellPercent,
-        refundPercent: created.refundPercent,
+        sellPercent: rateToNumber(created.sellPercent),
+        refundPercent: rateToNumber(created.refundPercent),
         expenseAccount: created.expenseAccount,
         active: created.active,
       });
@@ -325,12 +350,13 @@ export async function listCrmLeads(businessId: string): Promise<CrmLead[]> {
     source: r.source,
     interest: r.interest,
     registeredDate: r.registeredDate,
-    status: r.status,
+    status: labelCrmLeadStatus(r.status),
   }));
 }
 
 export async function createCrmLead(businessId: string, raw: unknown): Promise<CrmLead> {
   const body = crmLeadSchema.parse(raw);
+  const status = typeof body.status === 'string' ? parseCrmLeadStatus(body.status) : body.status;
   const row = await prisma.crmLead.create({
     data: {
       businessId,
@@ -338,7 +364,7 @@ export async function createCrmLead(businessId: string, raw: unknown): Promise<C
       source: body.source,
       interest: body.interest,
       registeredDate: body.registeredDate,
-      status: body.status,
+      status,
     },
   });
   return {
@@ -347,7 +373,7 @@ export async function createCrmLead(businessId: string, raw: unknown): Promise<C
     source: row.source,
     interest: row.interest,
     registeredDate: row.registeredDate,
-    status: row.status,
+    status: labelCrmLeadStatus(row.status),
   };
 }
 
@@ -357,7 +383,12 @@ export async function updateCrmLead(businessId: string, leadId: string, raw: unk
   if (!existing) throw new PeopleNotFoundError('سرنخ یافت نشد.');
   const row = await prisma.crmLead.update({
     where: { id: leadId },
-    data: body,
+    data: {
+      ...body,
+      ...(body.status !== undefined
+        ? { status: parseCrmLeadStatus(String(body.status)) }
+        : {}),
+    },
   });
   return {
     id: row.id,
@@ -365,7 +396,7 @@ export async function updateCrmLead(businessId: string, leadId: string, raw: unk
     source: row.source,
     interest: row.interest,
     registeredDate: row.registeredDate,
-    status: row.status,
+    status: labelCrmLeadStatus(row.status),
   };
 }
 
@@ -388,7 +419,7 @@ export async function listCrmClubMembers(businessId: string): Promise<CrmClubMem
     level: r.level,
     score: r.score,
     lastVisit: r.lastVisit,
-    status: r.status,
+    status: labelCrmClubMemberStatus(r.status),
     source: r.source,
   }));
 }
@@ -474,6 +505,9 @@ export async function deleteCrmVisit(businessId: string, visitId: string): Promi
 
 export async function createCrmClubMember(businessId: string, raw: unknown): Promise<CrmClubMember> {
   const body = crmClubMemberSchema.parse(raw);
+  if (body.personId?.trim()) await requirePersonInBusiness(businessId, body.personId);
+  const status =
+    typeof body.status === 'string' ? parseCrmClubMemberStatus(body.status) : body.status;
   const row = await prisma.crmClubMember.create({
     data: {
       businessId,
@@ -483,7 +517,7 @@ export async function createCrmClubMember(businessId: string, raw: unknown): Pro
       level: body.level,
       score: body.score,
       lastVisit: body.lastVisit,
-      status: body.status,
+      status,
       source: body.source,
     },
   });
@@ -495,7 +529,7 @@ export async function createCrmClubMember(businessId: string, raw: unknown): Pro
     level: row.level,
     score: row.score,
     lastVisit: row.lastVisit,
-    status: row.status,
+    status: labelCrmClubMemberStatus(row.status),
     source: row.source,
   };
 }
@@ -508,6 +542,9 @@ export async function updateCrmClubMember(
   const body = crmClubMemberSchema.partial().parse(raw);
   const existing = await prisma.crmClubMember.findFirst({ where: { id: memberId, businessId } });
   if (!existing) throw new PeopleNotFoundError('عضو باشگاه یافت نشد.');
+  if (body.personId !== undefined && body.personId?.trim()) {
+    await requirePersonInBusiness(businessId, body.personId);
+  }
   const row = await prisma.crmClubMember.update({
     where: { id: memberId },
     data: {
@@ -517,7 +554,9 @@ export async function updateCrmClubMember(
       level: body.level,
       score: body.score,
       lastVisit: body.lastVisit,
-      status: body.status,
+      ...(body.status !== undefined
+        ? { status: parseCrmClubMemberStatus(String(body.status)) }
+        : {}),
       source: body.source,
     },
   });
@@ -529,7 +568,7 @@ export async function updateCrmClubMember(
     level: row.level,
     score: row.score,
     lastVisit: row.lastVisit,
-    status: row.status,
+    status: labelCrmClubMemberStatus(row.status),
     source: row.source,
   };
 }

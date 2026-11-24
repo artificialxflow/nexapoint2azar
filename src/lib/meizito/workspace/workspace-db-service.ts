@@ -11,6 +11,8 @@ import {
   mergeFieldVisitFromDbRow,
 } from '@/src/lib/meizito/field-visit-referrer';
 import { normalizeFieldVisit } from '@/src/lib/meizito/visitHelpers';
+import { syncEntityAttachmentRefs } from '@/src/lib/attachments/entity-attachment-service';
+import { dueOnFromTaskCalendarStrings } from '@/src/lib/dates/business-date';
 import type {
   MeizitoBoard,
   MeizitoCard,
@@ -27,13 +29,23 @@ function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? (v as string[]) : [];
 }
 
+function cardIdsForColumn(
+  cards: Array<{ id: string; columnId: string; sortOrder: number }>,
+  columnId: string
+): string[] {
+  return cards
+    .filter((c) => c.columnId === columnId)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))
+    .map((c) => c.id);
+}
+
 export async function workspaceDbHasData(businessId: string): Promise<boolean> {
   const n = await prisma.workspaceBoard.count({ where: { businessId } });
   return n > 0;
 }
 
 export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<WorkspaceSnapshot> {
-  const [meta, boards, columns, labels, cards, noteBoards, notes, reports, visits, projects] =
+  const [meta, boards, columns, labels, cards, noteBoards, notes, reports, visits, projects, projectMembers] =
     await Promise.all([
       prisma.businessMeizitoWorkspaceMeta.findUnique({ where: { businessId } }),
       prisma.workspaceBoard.findMany({ where: { businessId }, orderBy: { sortOrder: 'asc' } }),
@@ -45,6 +57,7 @@ export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<W
       prisma.workspaceDailyReport.findMany({ where: { businessId } }),
       prisma.workspaceFieldVisit.findMany({ where: { businessId } }),
       prisma.workspaceProject.findMany({ where: { businessId } }),
+      prisma.workspaceProjectMember.findMany({ where: { businessId }, orderBy: { sortOrder: 'asc' } }),
     ]);
 
   const labelsByBoard = new Map<string, typeof labels>();
@@ -68,13 +81,19 @@ export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<W
     })
   );
 
+  const cardSortRows = cards.map((c) => ({
+    id: c.id,
+    columnId: c.columnId,
+    sortOrder: c.sortOrder,
+  }));
+
   const meizitoColumns: MeizitoColumn[] = columns.map((c) =>
     normalizeWorkspaceColumn({
       id: c.id,
       boardId: c.boardId,
       title: c.title,
       order: c.order,
-      cardIds: asStringArray(c.cardIds),
+      cardIds: cardIdsForColumn(cardSortRows, c.id),
     })
   );
 
@@ -138,14 +157,29 @@ export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<W
     )
   );
 
-  const meizitoProjects: MeizitoProject[] = projects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    memberIds: asStringArray(p.memberIds),
-    members: asStringArray(p.members),
-    boardId: p.boardId ?? undefined,
-    phases: Array.isArray(p.phases) ? (p.phases as MeizitoProject['phases']) : [],
-  }));
+  const membersByProject = new Map<string, typeof projectMembers>();
+  for (const m of projectMembers) {
+    const arr = membersByProject.get(m.projectId) ?? [];
+    arr.push(m);
+    membersByProject.set(m.projectId, arr);
+  }
+
+  const meizitoProjects: MeizitoProject[] = projects.map((p) => {
+    const junction = membersByProject.get(p.id) ?? [];
+    const memberIdsFromJunction = junction.map((m) => m.personId).filter((id): id is string => Boolean(id));
+    const membersFromJunction = junction
+      .map((m) => m.displayName || '')
+      .filter((name) => name.length > 0);
+    return {
+      id: p.id,
+      name: p.name,
+      memberIds:
+        memberIdsFromJunction.length > 0 ? memberIdsFromJunction : asStringArray(p.memberIds),
+      members: membersFromJunction.length > 0 ? membersFromJunction : asStringArray(p.members),
+      boardId: p.boardId ?? undefined,
+      phases: Array.isArray(p.phases) ? (p.phases as MeizitoProject['phases']) : [],
+    };
+  });
 
   return {
     boards: meizitoBoards,
@@ -166,6 +200,12 @@ export async function saveWorkspaceSnapshotToDb(
   snap: WorkspaceSnapshot
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    await tx.entityAttachment.deleteMany({
+      where: {
+        businessId,
+        entityType: { in: ['workspace_card', 'workspace_note'] },
+      },
+    });
     await tx.workspaceCard.deleteMany({ where: { businessId } });
     await tx.workspaceColumn.deleteMany({ where: { businessId } });
     await tx.workspaceLabel.deleteMany({ where: { businessId } });
@@ -175,6 +215,7 @@ export async function saveWorkspaceSnapshotToDb(
     await tx.noteBoard.deleteMany({ where: { businessId } });
     await tx.workspaceDailyReport.deleteMany({ where: { businessId } });
     await tx.workspaceFieldVisit.deleteMany({ where: { businessId } });
+    await tx.workspaceProjectMember.deleteMany({ where: { businessId } });
     await tx.workspaceProject.deleteMany({ where: { businessId } });
 
     await tx.businessMeizitoWorkspaceMeta.upsert({
@@ -219,7 +260,9 @@ export async function saveWorkspaceSnapshotToDb(
       }
     }
 
+    const columnCardOrder = new Map<string, string[]>();
     for (const col of snap.columns) {
+      columnCardOrder.set(col.id, Array.isArray(col.cardIds) ? col.cardIds : []);
       await tx.workspaceColumn.create({
         data: {
           id: col.id,
@@ -227,18 +270,22 @@ export async function saveWorkspaceSnapshotToDb(
           boardId: col.boardId,
           title: col.title,
           order: col.order,
-          cardIds: col.cardIds as unknown as Prisma.InputJsonValue,
         },
       });
     }
 
     for (const card of snap.cards) {
+      const orderList = columnCardOrder.get(card.columnId) ?? [];
+      const idx = orderList.indexOf(card.id);
+      const sortOrder = idx >= 0 ? idx : orderList.length;
+      const { dueOn, endDueOn } = dueOnFromTaskCalendarStrings(card.dueDate, card.endDueDate);
       await tx.workspaceCard.create({
         data: {
           id: card.id,
           businessId,
           boardId: card.boardId,
           columnId: card.columnId,
+          sortOrder,
           title: card.title,
           description: card.description,
           labelIds: card.labelIds as unknown as Prisma.InputJsonValue,
@@ -247,6 +294,7 @@ export async function saveWorkspaceSnapshotToDb(
           checklist: card.checklist as unknown as Prisma.InputJsonValue,
           attachments: card.attachments as unknown as Prisma.InputJsonValue,
           dueDate: card.dueDate,
+          dueOn,
           dueTime: card.dueTime,
           recurrence: card.recurrence,
           starred: card.starred,
@@ -256,10 +304,12 @@ export async function saveWorkspaceSnapshotToDb(
           reminderMinutes: card.reminderMinutes ?? null,
           assigneeUserId: card.assigneeUserId ?? null,
           endDueDate: card.endDueDate ?? '',
+          endDueOn: endDueOn ?? dueOn,
           sourceChatMessageId: card.sourceChatMessageId ?? null,
           sourceChatThreadId: card.sourceChatThreadId ?? null,
         },
       });
+      await syncEntityAttachmentRefs(tx, businessId, 'workspace_card', card.id, card.attachments);
     }
 
     for (const nb of snap.noteBoards) {
@@ -292,6 +342,7 @@ export async function saveWorkspaceSnapshotToDb(
           labelIds: (note.labelIds ?? []) as unknown as Prisma.InputJsonValue,
         },
       });
+      await syncEntityAttachmentRefs(tx, businessId, 'workspace_note', note.id, note.fileAttachments);
     }
 
     for (const rep of snap.dailyReports) {
@@ -336,6 +387,29 @@ export async function saveWorkspaceSnapshotToDb(
           phases: (proj.phases ?? []) as unknown as Prisma.InputJsonValue,
         },
       });
+      const personIds = proj.memberIds ?? [];
+      for (let i = 0; i < personIds.length; i++) {
+        await tx.workspaceProjectMember.create({
+          data: {
+            businessId,
+            projectId: proj.id,
+            personId: personIds[i],
+            displayName: '',
+            sortOrder: i,
+          },
+        });
+      }
+      const names = proj.members ?? [];
+      for (let i = 0; i < names.length; i++) {
+        await tx.workspaceProjectMember.create({
+          data: {
+            businessId,
+            projectId: proj.id,
+            displayName: names[i],
+            sortOrder: personIds.length + i,
+          },
+        });
+      }
     }
   }, { timeout: 60_000 });
 }

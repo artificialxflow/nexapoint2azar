@@ -1,7 +1,7 @@
 import type { PhoneDirectoryEntryKind, Prisma } from '@prisma/client';
 import { prisma } from '@/src/lib/db/prisma';
 import { phoneDirectoryEntrySchema } from '@/src/lib/erp/person-zod';
-import { PeopleNotFoundError } from '@/src/lib/erp/people-service';
+import { PeopleNotFoundError, requirePersonInBusiness, requireUserExists } from '@/src/lib/erp/people-service';
 import type { PhoneDirectoryEntry } from '@/src/types/phone-directory';
 
 function asStringArray(v: unknown): string[] {
@@ -98,7 +98,7 @@ function normalizeCreateData(
   businessId: string,
   body: ReturnType<typeof phoneDirectoryEntrySchema.parse>,
   sortOrder: number
-): Prisma.PhoneDirectoryEntryCreateInput {
+): Prisma.PhoneDirectoryEntryUncheckedCreateInput {
   const kind = body.entryKind ?? 'internal';
   const personId = kind === 'internal' ? null : (body.personId ?? null);
   const userId = kind === 'linked_user' ? (body.userId ?? null) : kind === 'internal' ? (body.userId ?? null) : (body.userId ?? null);
@@ -109,7 +109,7 @@ function normalizeCreateData(
     '';
 
   return {
-    business: { connect: { id: businessId } },
+    businessId,
     displayName: body.displayName,
     firstName,
     lastName,
@@ -126,12 +126,17 @@ function normalizeCreateData(
     sortOrder,
     entryKind: kind,
     visibilityTags: (body.visibilityTags ?? []) as Prisma.InputJsonValue,
-    ...(body.groupId ? { group: { connect: { id: body.groupId } } } : {}),
+    groupId: body.groupId ?? null,
   };
 }
 
 export async function createPhoneDirectoryEntry(businessId: string, raw: unknown): Promise<PhoneDirectoryEntry> {
   const body = phoneDirectoryEntrySchema.parse(raw);
+  const kind = body.entryKind ?? 'internal';
+  if (kind !== 'internal' && body.personId?.trim()) {
+    await requirePersonInBusiness(businessId, body.personId);
+  }
+  if (body.userId?.trim()) await requireUserExists(body.userId);
   const max = await prisma.phoneDirectoryEntry.aggregate({
     where: { businessId },
     _max: { sortOrder: true },
@@ -153,6 +158,20 @@ export async function updatePhoneDirectoryEntry(
   if (!existing) throw new PeopleNotFoundError('مخاطب یافت نشد.');
 
   const nextKind = body.entryKind ?? existing.entryKind;
+  const nextPersonId = body.personId !== undefined ? body.personId : existing.personId;
+  if (nextKind !== 'internal' && nextPersonId?.trim()) {
+    await requirePersonInBusiness(businessId, nextPersonId);
+  }
+  if (body.userId?.trim()) await requireUserExists(body.userId);
+  const personIdPatch =
+    body.personId !== undefined
+      ? nextKind === 'internal'
+        ? null
+        : body.personId
+      : nextKind === 'internal'
+        ? null
+        : undefined;
+
   const row = await prisma.phoneDirectoryEntry.update({
     where: { id: entryId },
     data: {
@@ -168,18 +187,14 @@ export async function updatePhoneDirectoryEntry(
       department: body.department,
       jobTitle: body.jobTitle,
       userId: body.userId,
-      personId: nextKind === 'internal' ? null : body.personId,
+      personId: personIdPatch,
       sortOrder: body.sortOrder,
       entryKind: body.entryKind,
+      groupId: body.groupId,
       visibilityTags:
         body.visibilityTags !== undefined
           ? (body.visibilityTags as Prisma.InputJsonValue)
           : undefined,
-      ...(body.groupId !== undefined
-        ? body.groupId
-          ? { group: { connect: { id: body.groupId } } }
-          : { group: { disconnect: true } }
-        : {}),
     },
   });
   return mapRow(row);

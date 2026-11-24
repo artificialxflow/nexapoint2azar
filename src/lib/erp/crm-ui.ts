@@ -2,7 +2,10 @@ import type { CrmLead } from '@/src/types/crm';
 
 export const SHOW_CRM_FAUX_LEAD = process.env.NEXT_PUBLIC_CRM_FAUX === 'true';
 
-export const LEAD_STATUS_OPTIONS = ['جدید', 'در حال پیگیری', 'تماس ناموفق', 'تبدیل‌شده'] as const;
+import { CrmLeadStatus } from '@prisma/client';
+import { CRM_LEAD_STATUS_LABELS } from '@/src/lib/erp/flow-status';
+
+export const LEAD_STATUS_OPTIONS = Object.values(CrmLeadStatus).map((s) => CRM_LEAD_STATUS_LABELS[s]);
 
 export function filterCrmLeads(
   leads: CrmLead[],

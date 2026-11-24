@@ -13,6 +13,11 @@ import type {
 } from '@/src/types/meizito';
 import { assertPrismaOrRethrowMeizito } from '@/src/lib/meizito/comms-prisma-errors';
 import { meizitoModuleLog } from '@/src/lib/meizito/logger';
+import {
+  loadEntityAttachmentRefsMap,
+  syncEntityAttachmentRefs,
+} from '@/src/lib/attachments/entity-attachment-service';
+import { calendarOnFromDateKeys } from '@/src/lib/dates/business-date';
 
 const requestsDbLog = meizitoModuleLog('requests');
 
@@ -168,6 +173,7 @@ async function createLetterInTransaction(
     });
   }
   await replaceApprovalStepsInTransaction(tx, businessId, 'letter', letter.id, letter.approvalSteps ?? []);
+  await syncEntityAttachmentRefs(tx, businessId, 'internal_letter', letter.id, letter.attachments);
 }
 
 /** به‌روزرسانی یک نامه بدون wipe کل صندوق (حالت db). */
@@ -203,6 +209,7 @@ export async function updateLetterInDb(
       },
     });
     await replaceApprovalStepsInTransaction(tx, businessId, 'letter', letter.id, letter.approvalSteps ?? []);
+    await syncEntityAttachmentRefs(tx, businessId, 'internal_letter', letter.id, letter.attachments);
   });
 }
 
@@ -251,6 +258,7 @@ async function createRequestInTransaction(
     request.id,
     request.approvalSteps ?? []
   );
+  await syncEntityAttachmentRefs(tx, businessId, 'internal_work_request', request.id, request.attachments);
 }
 
 /** یک درخواست جدید بدون wipe کل صندوق (حالت db). */
@@ -319,6 +327,7 @@ export async function updateRequestInDb(
       request.id,
       request.approvalSteps ?? []
     );
+    await syncEntityAttachmentRefs(tx, businessId, 'internal_work_request', request.id, request.attachments);
   });
 }
 
@@ -338,6 +347,7 @@ export async function appendLetterToDb(
 
 export async function saveLettersSnapshotToDb(businessId: string, snap: LettersSnapshot): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    await tx.entityAttachment.deleteMany({ where: { businessId, entityType: 'internal_letter' } });
     await tx.internalLetterRecipient.deleteMany({ where: { businessId } });
     await tx.meizitoApprovalStep.deleteMany({ where: { businessId, entityType: 'letter' } });
     await tx.internalLetter.deleteMany({ where: { businessId } });
@@ -415,6 +425,8 @@ export async function saveCalendarSnapshotToDb(businessId: string, snap: Calenda
 
     for (const ev of snap.events) {
       const calId = idBySlug.get(ev.calendarId) ?? ev.calendarId;
+      const endKey = ev.endDate ?? ev.date ?? null;
+      const { startOn, endOn } = calendarOnFromDateKeys(ev.date, endKey);
       await tx.meizitoCalendarEvent.create({
         data: {
           id: ev.id,
@@ -422,7 +434,9 @@ export async function saveCalendarSnapshotToDb(businessId: string, snap: Calenda
           calendarId: calId,
           title: ev.title,
           dateKey: ev.date,
-          endDateKey: ev.endDate ?? ev.date ?? null,
+          startOn,
+          endDateKey: endKey,
+          endOn,
           allDay: ev.allDay ?? false,
           time: ev.time ?? null,
           endTime: ev.endTime ?? null,
@@ -441,33 +455,59 @@ export async function saveCalendarSnapshotToDb(businessId: string, snap: Calenda
 }
 
 export async function loadChatSnapshotFromDb(businessId: string): Promise<ChatSnapshot> {
-  const [threads, messages] = await Promise.all([
+  const [threads, messages, participants] = await Promise.all([
     prisma.chatThread.findMany({ where: { businessId } }),
     prisma.chatMessage.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } }),
+    prisma.chatThreadParticipant.findMany({
+      where: { businessId },
+      orderBy: { sortOrder: 'asc' },
+    }),
   ]);
+  const attachmentRefsByMessage = await loadEntityAttachmentRefsMap(
+    businessId,
+    'chat_message',
+    messages.map((m) => m.id)
+  );
+  const participantsByThread = new Map<string, typeof participants>();
+  for (const p of participants) {
+    const arr = participantsByThread.get(p.threadId) ?? [];
+    arr.push(p);
+    participantsByThread.set(p.threadId, arr);
+  }
   return {
-    threads: threads.map((t) => ({
-      id: t.id,
-      title: t.title,
-      threadType: t.threadType as ChatSnapshot['threads'][0]['threadType'],
-      participantNames: asStringArray(t.participantNames),
-      pinned: t.pinned,
-      starred: t.starred,
-      messageIds: messages.filter((m) => m.threadId === t.id).map((m) => m.id),
-    })),
-    messages: messages.map((m) => ({
-      id: m.id,
-      threadId: m.threadId,
-      author: m.author,
-      body: m.body,
-      createdAt: m.createdAt.toISOString(),
-      type: m.messageType as ChatSnapshot['messages'][0]['type'],
-      attachmentNames: asStringArray(m.attachmentNames),
-      attachmentRefs: m.attachmentRefs as ChatSnapshot['messages'][0]['attachmentRefs'],
-      voiceDurationSec: m.voiceDurationSec ?? undefined,
-      imageDataUrl: m.imageDataUrl ?? undefined,
-      editedAt: m.editedAt?.toISOString(),
-    })),
+    threads: threads.map((t) => {
+      const junction = participantsByThread.get(t.id) ?? [];
+      const namesFromJunction = junction.map((p) => p.displayName).filter(Boolean);
+      return {
+        id: t.id,
+        title: t.title,
+        threadType: t.threadType as ChatSnapshot['threads'][0]['threadType'],
+        participantNames:
+          namesFromJunction.length > 0 ? namesFromJunction : asStringArray(t.participantNames),
+        pinned: t.pinned,
+        starred: t.starred,
+        messageIds: messages.filter((m) => m.threadId === t.id).map((m) => m.id),
+      };
+    }),
+    messages: messages.map((m) => {
+      const fromJunction = attachmentRefsByMessage.get(m.id);
+      const attachmentRefs =
+        fromJunction && fromJunction.length > 0
+          ? fromJunction
+          : (m.attachmentRefs as ChatSnapshot['messages'][0]['attachmentRefs']);
+      return {
+        id: m.id,
+        threadId: m.threadId,
+        author: m.author,
+        body: m.body,
+        createdAt: m.createdAt.toISOString(),
+        type: m.messageType as ChatSnapshot['messages'][0]['type'],
+        attachmentNames: asStringArray(m.attachmentNames),
+        attachmentRefs,
+        voiceDurationSec: m.voiceDurationSec ?? undefined,
+        editedAt: m.editedAt?.toISOString(),
+      };
+    }),
   };
 }
 
@@ -477,17 +517,33 @@ export async function updateChatThreadInDb(
   threadId: string,
   patch: Partial<Pick<ChatSnapshot['threads'][0], 'title' | 'starred' | 'pinned' | 'participantNames'>>
 ): Promise<void> {
-  await prisma.chatThread.updateMany({
-    where: { id: threadId, businessId },
-    data: {
-      title: patch.title,
-      starred: patch.starred,
-      pinned: patch.pinned,
-      participantNames:
-        patch.participantNames !== undefined
-          ? (patch.participantNames as unknown as Prisma.InputJsonValue)
-          : undefined,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.chatThread.updateMany({
+      where: { id: threadId, businessId },
+      data: {
+        title: patch.title,
+        starred: patch.starred,
+        pinned: patch.pinned,
+        participantNames:
+          patch.participantNames !== undefined
+            ? (patch.participantNames as unknown as Prisma.InputJsonValue)
+            : undefined,
+      },
+    });
+    if (patch.participantNames !== undefined) {
+      await tx.chatThreadParticipant.deleteMany({ where: { businessId, threadId } });
+      for (let i = 0; i < patch.participantNames.length; i++) {
+        const displayName = patch.participantNames[i];
+        await tx.chatThreadParticipant.create({
+          data: {
+            businessId,
+            threadId,
+            displayName,
+            sortOrder: i,
+          },
+        });
+      }
+    }
   });
 }
 
@@ -528,27 +584,31 @@ export async function appendChatMessageToDb(
     where: { id: message.id, businessId },
   });
   if (existing) return;
-  await prisma.chatMessage.create({
-    data: {
-      id: message.id,
-      businessId,
-      threadId: message.threadId,
-      author: message.author,
-      body: message.body,
-      messageType: message.type ?? 'text',
-      attachmentNames: message.attachmentNames as unknown as Prisma.InputJsonValue,
-      attachmentRefs: (message.attachmentRefs ?? []) as unknown as Prisma.InputJsonValue,
-      voiceDurationSec: message.voiceDurationSec ?? null,
-      imageDataUrl: message.imageDataUrl ?? null,
-      editedAt: message.editedAt ? new Date(message.editedAt) : null,
-      createdAt: new Date(message.createdAt),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.chatMessage.create({
+      data: {
+        id: message.id,
+        businessId,
+        threadId: message.threadId,
+        author: message.author,
+        body: message.body,
+        messageType: message.type ?? 'text',
+        attachmentNames: message.attachmentNames as unknown as Prisma.InputJsonValue,
+        attachmentRefs: (message.attachmentRefs ?? []) as unknown as Prisma.InputJsonValue,
+        voiceDurationSec: message.voiceDurationSec ?? null,
+        editedAt: message.editedAt ? new Date(message.editedAt) : null,
+        createdAt: new Date(message.createdAt),
+      },
+    });
+    await syncEntityAttachmentRefs(tx, businessId, 'chat_message', message.id, message.attachmentRefs);
   });
 }
 
 export async function saveChatSnapshotToDb(businessId: string, snap: ChatSnapshot): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    await tx.entityAttachment.deleteMany({ where: { businessId, entityType: 'chat_message' } });
     await tx.chatMessage.deleteMany({ where: { businessId } });
+    await tx.chatThreadParticipant.deleteMany({ where: { businessId } });
     await tx.chatThread.deleteMany({ where: { businessId } });
     for (const t of snap.threads) {
       await tx.chatThread.create({
@@ -563,6 +623,17 @@ export async function saveChatSnapshotToDb(businessId: string, snap: ChatSnapsho
           starred: t.starred ?? false,
         },
       });
+      const names = t.participantNames ?? [];
+      for (let i = 0; i < names.length; i++) {
+        await tx.chatThreadParticipant.create({
+          data: {
+            businessId,
+            threadId: t.id,
+            displayName: names[i],
+            sortOrder: i,
+          },
+        });
+      }
     }
     for (const m of snap.messages) {
       await tx.chatMessage.create({
@@ -576,11 +647,11 @@ export async function saveChatSnapshotToDb(businessId: string, snap: ChatSnapsho
           attachmentNames: m.attachmentNames as unknown as Prisma.InputJsonValue,
           attachmentRefs: (m.attachmentRefs ?? []) as unknown as Prisma.InputJsonValue,
           voiceDurationSec: m.voiceDurationSec ?? null,
-          imageDataUrl: m.imageDataUrl ?? null,
           editedAt: m.editedAt ? new Date(m.editedAt) : null,
           createdAt: new Date(m.createdAt),
         },
       });
+      await syncEntityAttachmentRefs(tx, businessId, 'chat_message', m.id, m.attachmentRefs);
     }
   });
 }
@@ -620,6 +691,7 @@ export async function loadRequestsSnapshotFromDb(businessId: string): Promise<Re
 export async function saveRequestsSnapshotToDb(businessId: string, snap: RequestsSnapshot): Promise<void> {
   try {
     await prisma.$transaction(async (tx) => {
+      await tx.entityAttachment.deleteMany({ where: { businessId, entityType: 'internal_work_request' } });
       await tx.internalWorkRequest.deleteMany({ where: { businessId } });
       for (const req of snap.requests) {
         const createdAtRaw = req.createdAt ? new Date(req.createdAt) : new Date();
@@ -655,6 +727,7 @@ export async function saveRequestsSnapshotToDb(businessId: string, snap: Request
             createdAt,
           },
         });
+        await syncEntityAttachmentRefs(tx, businessId, 'internal_work_request', req.id, req.attachments);
       }
     });
   } catch (err) {

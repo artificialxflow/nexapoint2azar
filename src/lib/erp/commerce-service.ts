@@ -10,6 +10,11 @@ import {
   commerceModuleSchema,
   storeModuleSchema,
 } from '@/src/lib/erp/commerce-zod';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import { formatBusinessDateJalali, parseBusinessDateForDb } from '@/src/lib/dates/business-date';
+import { labelStoreOrderStatus, parseStoreOrderStatus } from '@/src/lib/erp/flow-status';
+import { PublishStatus } from '@prisma/client';
+import { requireCatalogProduct } from '@/src/lib/products/catalog-service';
 
 export class CommerceValidationError extends Error {
   code = 'VALIDATION';
@@ -19,6 +24,30 @@ export class CommerceValidationError extends Error {
 }
 
 const defaultIncomeTypes = ['فروش نقدی', 'ارائه خدمات'];
+
+function formatQtyLabel(qty: number): string {
+  return Math.max(0, Math.round(qty)).toLocaleString('fa-IR');
+}
+
+function formatMoneyLabel(amount: number): string {
+  return Math.round(amount).toLocaleString('fa-IR');
+}
+
+async function resolveStoreCatalogLink(
+  businessId: string,
+  product: { id: string; catalogProductId?: string }
+): Promise<string | null> {
+  if (product.catalogProductId?.trim()) {
+    await requireCatalogProduct(businessId, product.catalogProductId);
+    return product.catalogProductId.trim();
+  }
+  const byId = await prisma.catalogProduct.findUnique({
+    where: { businessId_productId: { businessId, productId: product.id } },
+    select: { productId: true },
+  });
+  if (byId) return byId.productId;
+  return null;
+}
 
 function parseNumeric(val: string | number | undefined): number {
   if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
@@ -148,7 +177,7 @@ export async function saveCommerceModule(
           businessId,
           kind: docKindForSale(inv.kind),
           docDate: inv.date || '',
-          totalAmount: Number(inv.total) || 0,
+          totalAmount: moneyFromNumber(Number(inv.total) || 0),
           status: inv.status || 'confirmed',
           data: inv as unknown as Prisma.InputJsonValue,
         },
@@ -164,7 +193,7 @@ export async function saveCommerceModule(
           businessId,
           kind: docKindForPurchase(inv.kind),
           docDate: inv.date || '',
-          totalAmount: lineTotal,
+          totalAmount: moneyFromNumber(lineTotal),
           status: inv.status || 'confirmed',
           data: inv as unknown as Prisma.InputJsonValue,
         },
@@ -176,7 +205,7 @@ export async function saveCommerceModule(
           businessId,
           kind: 'expense',
           docDate: exp.dateTime || '',
-          totalAmount: Number(exp.amount) || 0,
+          totalAmount: moneyFromNumber(Number(exp.amount) || 0),
           status: 'confirmed',
           data: exp as unknown as Prisma.InputJsonValue,
         },
@@ -188,7 +217,7 @@ export async function saveCommerceModule(
           businessId,
           kind: 'waste',
           docDate: w.date || '',
-          totalAmount: Number(w.quantity) || 0,
+          totalAmount: moneyFromNumber(Number(w.quantity) || 0),
           status: 'confirmed',
           data: w as unknown as Prisma.InputJsonValue,
         },
@@ -200,7 +229,7 @@ export async function saveCommerceModule(
           businessId,
           kind: 'income',
           docDate: inc.date || '',
-          totalAmount: Number(inc.amount) || 0,
+          totalAmount: moneyFromNumber(Number(inc.amount) || 0),
           status: 'confirmed',
           data: inc as unknown as Prisma.InputJsonValue,
         },
@@ -227,17 +256,18 @@ export async function getStoreModule(businessId: string): Promise<StoreModulePay
       id: p.id,
       name: p.name,
       cat: p.category,
-      price: p.price,
-      stock: p.stock,
+      price: formatMoneyLabel(moneyToNumber(p.priceNum)),
+      stock: formatQtyLabel(p.stockQty),
       seo: p.seo,
       status: p.status === 'inactive' ? 'inactive' : 'active',
+      catalogProductId: p.catalogProductId ?? undefined,
     })),
     orders: orders.map((o) => ({
       id: o.orderNo || o.id,
       customer: o.customer,
-      date: o.date,
-      total: o.total,
-      status: o.status,
+      date: o.date ? formatBusinessDateJalali(o.date) : '',
+      total: formatMoneyLabel(moneyToNumber(o.totalNum)),
+      status: labelStoreOrderStatus(o.status),
     })),
     seo: {
       title: settings?.seoTitle ?? '',
@@ -279,15 +309,15 @@ export async function saveStoreModule(businessId: string, raw: StoreModulePayloa
 
     await tx.storeProduct.deleteMany({ where: { businessId } });
     for (const p of payload.products) {
+      const catalogProductId = await resolveStoreCatalogLink(businessId, p);
       await tx.storeProduct.create({
         data: {
           id: p.id,
           businessId,
+          catalogProductId,
           name: p.name,
           category: p.cat || 'عمومی',
-          price: p.price,
-          priceNum: parseNumeric(p.price),
-          stock: p.stock,
+          priceNum: moneyFromNumber(parseNumeric(p.price)),
           stockQty: Math.max(0, Math.round(parseNumeric(p.stock))),
           seo: p.seo || '',
           status: p.status,
@@ -302,10 +332,9 @@ export async function saveStoreModule(businessId: string, raw: StoreModulePayloa
           businessId,
           orderNo: o.id,
           customer: o.customer,
-          date: o.date,
-          total: o.total,
-          totalNum: parseNumeric(o.total),
-          status: o.status,
+          date: parseBusinessDateForDb(o.date),
+          totalNum: moneyFromNumber(parseNumeric(o.total)),
+          status: parseStoreOrderStatus(o.status),
         },
       });
     }
@@ -331,9 +360,14 @@ export async function getBlogModule(businessId: string): Promise<BlogModulePaylo
       id: p.id,
       title: p.title,
       author: p.author,
-      date: p.date,
+      date: p.date ? formatBusinessDateJalali(p.date) : '',
       views: String(p.views),
-      status: p.status,
+      status:
+        p.publishState === PublishStatus.draft
+          ? 'پیش‌نویس'
+          : p.publishState === PublishStatus.archived
+            ? 'بایگانی'
+            : 'منتشر شده',
       category: p.categoryName,
     })),
     categories: categories.map((c) => ({
@@ -346,7 +380,7 @@ export async function getBlogModule(businessId: string): Promise<BlogModulePaylo
       id: cm.id,
       user: cm.user,
       text: cm.text,
-      date: cm.date,
+      date: cm.date ? formatBusinessDateJalali(cm.date) : '',
       post: cm.postTitle,
       status: cm.status,
     })),
@@ -402,10 +436,13 @@ export async function saveBlogModule(businessId: string, raw: BlogModulePayload)
           title: p.title,
           slug: p.title.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 80) || p.id,
           author: p.author,
-          date: p.date,
+          date: parseBusinessDateForDb(p.date),
           views: Math.max(0, Math.round(parseNumeric(p.views))),
-          status: p.status,
-          publishState: p.status.includes('پیش‌نویس') ? 'draft' : 'published',
+          publishState: p.status.includes('پیش‌نویس')
+            ? PublishStatus.draft
+            : p.status.includes('بایگانی')
+              ? PublishStatus.archived
+              : PublishStatus.published,
           categoryName: p.category || 'عمومی',
         },
       });
@@ -418,7 +455,7 @@ export async function saveBlogModule(businessId: string, raw: BlogModulePayload)
           businessId,
           user: cm.user,
           text: cm.text,
-          date: cm.date,
+          date: parseBusinessDateForDb(cm.date),
           postTitle: cm.post,
           status: cm.status,
         },

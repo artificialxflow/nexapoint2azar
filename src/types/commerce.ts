@@ -90,6 +90,7 @@ export interface StoreProductRecord {
   stock: string;
   seo: string;
   status: 'active' | 'inactive';
+  catalogProductId?: string;
 }
 
 export interface StoreOrderRecord {

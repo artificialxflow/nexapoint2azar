@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
@@ -13,14 +12,34 @@ const seedWarehouses: WarehouseLocation[] = [
   { id: 'w2', code: 'WH-RAW', name: 'انبار مواد اولیه', isActive: true, description: 'مواد' },
 ];
 
+function mapLocation(row: {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  active: boolean;
+}): WarehouseLocation {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    isActive: row.active,
+    description: row.address,
+  };
+}
+
 async function ensureSeedWarehouses(businessId: string) {
-  const count = await prisma.warehouseItem.count({ where: { businessId } });
+  const count = await prisma.warehouseLocation.count({ where: { businessId } });
   if (count > 0) return;
   for (const w of seedWarehouses) {
-    await prisma.warehouseItem.create({
+    await prisma.warehouseLocation.create({
       data: {
+        id: w.id,
         businessId,
-        data: w as unknown as Prisma.InputJsonValue,
+        code: w.code,
+        name: w.name,
+        address: w.description,
+        active: w.isActive,
       },
     });
   }
@@ -31,12 +50,12 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await requireBusinessAccess(req, id);
     await ensureSeedWarehouses(id);
-    const rows = await prisma.warehouseItem.findMany({
+    const rows = await prisma.warehouseLocation.findMany({
       where: { businessId: id },
       orderBy: { createdAt: 'asc' },
     });
     return jsonOk({
-      items: rows.map((r) => r.data as unknown as WarehouseLocation),
+      items: rows.map(mapLocation),
     });
   } catch (err) {
     return handleAuthRouteError(err, 'erp.warehouse.list');
@@ -44,7 +63,13 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 }
 
 const createSchema = z.object({
-  item: z.record(z.unknown()),
+  item: z.object({
+    id: z.string().optional(),
+    code: z.string().min(1),
+    name: z.string().min(1),
+    isActive: z.boolean().optional().default(true),
+    description: z.string().optional().default(''),
+  }),
 });
 
 export async function POST(req: NextRequest, ctx: Ctx) {
@@ -52,13 +77,17 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     const { id } = await ctx.params;
     await requireBusinessAccess(req, id);
     const body = createSchema.parse(await req.json());
-    const row = await prisma.warehouseItem.create({
+    const row = await prisma.warehouseLocation.create({
       data: {
+        id: body.item.id,
         businessId: id,
-        data: body.item as unknown as Prisma.InputJsonValue,
+        code: body.item.code,
+        name: body.item.name,
+        address: body.item.description ?? '',
+        active: body.item.isActive ?? true,
       },
     });
-    return jsonOk({ item: row.data as unknown as WarehouseLocation }, { status: 201 });
+    return jsonOk({ item: mapLocation(row) }, { status: 201 });
   } catch (err) {
     return handleAuthRouteError(err, 'erp.warehouse.create');
   }

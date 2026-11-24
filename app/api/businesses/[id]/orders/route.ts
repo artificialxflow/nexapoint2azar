@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import { CustomerOrderStatus } from '@prisma/client';
+import { labelCustomerOrderStatus, parseCustomerOrderStatus } from '@/src/lib/erp/flow-status';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -11,7 +14,7 @@ const createSchema = z.discriminatedUnion('entity', [
     customer: z.string().min(1),
     items: z.string().optional().default(''),
     date: z.string().optional().default(''),
-    status: z.string().optional().default('در انتظار تایید'),
+    status: z.nativeEnum(CustomerOrderStatus).optional().default(CustomerOrderStatus.pending_approval),
     progress: z.number().int().min(0).max(100).optional().default(10),
     type: z.enum(['new', 'processing', 'completed']).optional().default('new'),
     amount: z.string().optional().default(''),
@@ -34,7 +37,7 @@ const createSchema = z.discriminatedUnion('entity', [
 const patchSchema = z.object({
   entity: z.enum(['order', 'shipping']),
   id: z.string().min(1),
-  status: z.string().optional(),
+  status: z.nativeEnum(CustomerOrderStatus).optional(),
   progress: z.number().int().min(0).max(100).optional(),
   type: z.enum(['new', 'processing', 'completed']).optional(),
   trackingCode: z.string().optional(),
@@ -57,7 +60,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ]);
 
     return jsonOk({
-      orders,
+      orders: orders.map((o) => ({
+        ...o,
+        status: labelCustomerOrderStatus(o.status),
+        statusCode: o.status,
+        totalRial: moneyToNumber(o.totalRial),
+      })),
       shippingSchedules,
       summary: {
         total: orders.length,
@@ -87,11 +95,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           customer: body.customer,
           items: body.items,
           date: body.date,
-          status: body.status,
+          status: parseCustomerOrderStatus(body.status),
           progress: body.progress,
           type: body.type,
           amount: body.amount,
-          totalRial: body.totalRial,
+          totalRial: moneyFromNumber(body.totalRial),
           notes: body.notes,
         },
       });
@@ -127,7 +135,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       const res = await prisma.customerOrder.updateMany({
         where: { id: body.id, businessId },
         data: {
-          ...(body.status !== undefined ? { status: body.status } : {}),
+          ...(body.status !== undefined ? { status: parseCustomerOrderStatus(body.status) } : {}),
           ...(body.progress !== undefined ? { progress: body.progress } : {}),
           ...(body.type !== undefined ? { type: body.type } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),

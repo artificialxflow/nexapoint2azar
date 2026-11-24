@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CrmClubMemberStatus, CrmLeadStatus } from '@prisma/client';
 
 const personRoleSchema = z.enum(['customer', 'supplier', 'shareholder', 'subordinate']);
 const personKindSchema = z.enum(['natural', 'legal']);
@@ -178,7 +179,7 @@ export const crmLeadSchema = z.object({
   source: z.string().default(''),
   interest: z.string().default(''),
   registeredDate: z.string().default(''),
-  status: z.string().default('جدید'),
+  status: z.nativeEnum(CrmLeadStatus).default(CrmLeadStatus.new),
 });
 
 export const crmVisitSchema = z.object({
@@ -249,7 +250,7 @@ export const crmClubMemberSchema = z.object({
   level: z.string().default(''),
   score: z.number().default(0),
   lastVisit: z.string().default(''),
-  status: z.string().default('فعال'),
+  status: z.nativeEnum(CrmClubMemberStatus).default(CrmClubMemberStatus.active),
   source: z.string().default(''),
 });
 

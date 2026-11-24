@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -62,13 +63,17 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       }),
     ]);
 
-    const totalBudget = campaigns.reduce((s, c) => s + c.budget, 0);
-    const totalSpent = campaigns.reduce((s, c) => s + c.spent, 0);
+    const totalBudget = campaigns.reduce((s, c) => s + moneyToNumber(c.budget), 0);
+    const totalSpent = campaigns.reduce((s, c) => s + moneyToNumber(c.spent), 0);
     const totalLeads = campaigns.reduce((s, c) => s + c.leadsCount, 0);
     const totalConversions = campaigns.reduce((s, c) => s + c.conversionsCount, 0);
 
     return jsonOk({
-      campaigns,
+      campaigns: campaigns.map((c) => ({
+        ...c,
+        budget: moneyToNumber(c.budget),
+        spent: moneyToNumber(c.spent),
+      })),
       surveys,
       summary: { totalBudget, totalSpent, totalLeads, totalConversions },
     });
@@ -89,8 +94,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           businessId,
           name: body.name,
           channel: body.channel,
-          budget: body.budget,
-          spent: body.spent,
+          budget: moneyFromNumber(body.budget),
+          spent: moneyFromNumber(body.spent),
           leadsCount: body.leadsCount,
           conversionsCount: body.conversionsCount,
           startDate: body.startDate,
@@ -149,7 +154,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         where: { id: body.id, businessId },
         data: {
           ...(status ? { status } : {}),
-          ...(body.spent !== undefined ? { spent: body.spent } : {}),
+          ...(body.spent !== undefined ? { spent: moneyFromNumber(body.spent) } : {}),
           ...(body.leadsCount !== undefined ? { leadsCount: body.leadsCount } : {}),
           ...(body.conversionsCount !== undefined ? { conversionsCount: body.conversionsCount } : {}),
         },

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyToNumber } from '@/src/lib/money/decimal';
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
@@ -41,17 +42,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     let totalExpenses = 0;
     let totalIncome = 0;
     for (const d of commerceDocs) {
-      if (d.kind === 'sale') totalSales += d.totalAmount;
-      else if (d.kind === 'sale_return') totalSales -= d.totalAmount;
-      else if (d.kind === 'purchase') totalPurchases += d.totalAmount;
-      else if (d.kind === 'purchase_return') totalPurchases -= d.totalAmount;
-      else if (d.kind === 'expense') totalExpenses += d.totalAmount;
-      else if (d.kind === 'income') totalIncome += d.totalAmount;
+      const amt = moneyToNumber(d.totalAmount);
+      if (d.kind === 'sale') totalSales += amt;
+      else if (d.kind === 'sale_return') totalSales -= amt;
+      else if (d.kind === 'purchase') totalPurchases += amt;
+      else if (d.kind === 'purchase_return') totalPurchases -= amt;
+      else if (d.kind === 'expense') totalExpenses += amt;
+      else if (d.kind === 'income') totalIncome += amt;
     }
 
     const totalLiquidity =
-      bankAccounts.reduce((s, a) => s + a.balance, 0) +
-      cashboxes.reduce((s, c) => s + c.balance, 0);
+      bankAccounts.reduce((s, a) => s + moneyToNumber(a.balance), 0) +
+      cashboxes.reduce((s, c) => s + moneyToNumber(c.balance), 0);
 
     const leadSourceMap = new Map<string, number>();
     for (const l of crmLeads) {
@@ -76,7 +78,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         netProfit: totalSales + totalIncome - totalPurchases - totalExpenses,
         totalLiquidity,
         crmLeadsCount: crmLeads.length,
-        crmPipelineValue: crmOpportunities.reduce((s, o) => s + (o.amount ?? 0), 0),
+        crmPipelineValue: crmOpportunities.reduce((s, o) => s + moneyToNumber(o.amount), 0),
         crmVisitsCount: crmVisits.length,
         ordersCount: orders.length,
         productionOrdersCount: productionOrders.length,
@@ -85,13 +87,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       leadSources: [...leadSourceMap.entries()].map(([name, value]) => ({ name, value })),
       orderDistribution: [...orderStatusMap.entries()].map(([name, value]) => ({ name, value })),
       liquidityBreakdown: [
-        ...bankAccounts.map((b) => ({ name: b.bankName, value: b.balance })),
-        ...cashboxes.map((c) => ({ name: c.name, value: c.balance })),
+        ...bankAccounts.map((b) => ({ name: b.bankName, value: moneyToNumber(b.balance) })),
+        ...cashboxes.map((c) => ({ name: c.name, value: moneyToNumber(c.balance) })),
       ],
       campaignPerformance: campaigns.map((c) => ({
         name: c.name,
-        budget: c.budget,
-        spent: c.spent,
+        budget: moneyToNumber(c.budget),
+        spent: moneyToNumber(c.spent),
         leads: c.leadsCount,
         conversions: c.conversionsCount,
       })),

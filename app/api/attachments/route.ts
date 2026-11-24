@@ -10,6 +10,7 @@ import {
   assertValidProfileImage,
   type ImageUploadPurpose,
 } from '@/src/lib/media/validate-upload-image';
+import { isEntityAttachmentHost } from '@/src/lib/attachments/entity-attachment-service';
 
 export async function GET(req: NextRequest) {
   try {
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
     await mkdir(path.dirname(absolute), { recursive: true });
     await writeFile(absolute, buffer);
 
-    await prisma.attachment.create({
+    const row = await prisma.attachment.create({
       data: {
         businessId,
         uploaderId: user.id,
@@ -118,8 +119,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    if (businessId && entityId && isEntityAttachmentHost(entityType)) {
+      await prisma.entityAttachment.create({
+        data: {
+          businessId,
+          entityType,
+          entityId,
+          attachmentId: row.id,
+          sortOrder: 0,
+        },
+      });
+    }
+
     return jsonOk(
       {
+        id: row.id,
         fileKey,
         url: isPublic
           ? `/api/storage/public/${fileKey.split('/').map(encodeURIComponent).join('/')}`

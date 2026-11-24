@@ -172,7 +172,12 @@ async function ensureFixtureTeamUsers(businessId: string, ownerId: string) {
   return { memberIds, teamNames: roster.map((r) => r.displayName) };
 }
 
-function buildWorkspaceSnapshot(teamNames: string[], assigneeUserId?: string) {
+function buildWorkspaceSnapshot(
+  teamNames: string[],
+  opts?: { assigneeUserId?: string; projectMemberPersonIds?: string[] },
+) {
+  const assigneeUserId = opts?.assigneeUserId;
+  const projectMemberPersonIds = opts?.projectMemberPersonIds ?? [];
   const snap = createMockWorkspaceSnapshot();
   const prefix = FIXTURE_ID_PREFIX;
   snap.boards = snap.boards.map((b) => ({
@@ -255,7 +260,7 @@ function buildWorkspaceSnapshot(teamNames: string[], assigneeUserId?: string) {
     {
       id: `${prefix}-proj-1`,
       name: 'پروژه نمایشی روناک',
-      memberIds: assigneeUserId ? [assigneeUserId] : [],
+      memberIds: projectMemberPersonIds,
       members: teamNames,
     },
   ];
@@ -409,7 +414,7 @@ async function seedRonakData(businessId: string, ownerId: string) {
         id: 'ronak-wv-1',
         number: '9001',
         date: saleDate,
-        status: 'confirmed',
+        status: 'posted',
         description: 'حواله نمایشی روناک',
         type: 'issue',
         warehouseReceiptStatus: 'posted',
@@ -465,7 +470,7 @@ async function seedRonakData(businessId: string, ownerId: string) {
     source: 'سایت',
     interest: 'مبل راحتی',
     registeredDate: '۱۴۰۴/۰۹/۰۱',
-    status: 'جدید',
+    status: 'new',
   });
 
   await createCrmVisit(businessId, {
@@ -503,7 +508,7 @@ async function seedRonakData(businessId: string, ownerId: string) {
       level: 'طلایی',
       score: 420,
       lastVisit: 'امروز',
-      status: 'فعال',
+      status: 'active',
       source: 'روناک',
     },
   });
@@ -552,7 +557,10 @@ async function seedRonakData(businessId: string, ownerId: string) {
     },
   });
 
-  const ws = buildWorkspaceSnapshot(teamNames, fixtureMemberId);
+  const ws = buildWorkspaceSnapshot(teamNames, {
+    assigneeUserId: fixtureMemberId,
+    projectMemberPersonIds: seedPeople.length > 0 ? [pid(seedPeople[0].id)] : [],
+  });
   await saveWorkspaceSnapshotToDb(businessId, ws);
 
   const p = 'ronak';
@@ -602,19 +610,47 @@ async function seedRonakData(businessId: string, ownerId: string) {
   }));
   await saveRequestsSnapshotToDb(businessId, reqs);
 
-  await prisma.warehouseItem.create({
-    data: {
+  await prisma.catalogProduct.upsert({
+    where: {
+      businessId_productId: { businessId, productId: 'ronak-wh-item-1' },
+    },
+    create: {
       businessId,
+      productId: 'ronak-wh-item-1',
+      name: 'کالای انبار روناک',
+      code: 'WH-RON-001',
+      accountingCode: 'WH-RON-001',
+      type: 'goods',
+      status: 'active',
       data: {
         id: 'ronak-wh-item-1',
-        code: 'WH-RON-001',
         name: 'کالای انبار روناک',
-        qty: 12,
-        unit: 'عدد',
-        warehouseId: 'ronak-wh-main',
+        code: 'WH-RON-001',
+        status: 'active',
+        type: 'goods',
       },
     },
+    update: {},
   });
+  const whItem = await prisma.warehouseItem.findFirst({
+    where: { businessId, catalogProductId: 'ronak-wh-item-1', warehouseLocationId: null },
+    select: { id: true },
+  });
+  if (whItem) {
+    await prisma.warehouseItem.update({
+      where: { id: whItem.id },
+      data: { stockQty: 12, unit: 'عدد' },
+    });
+  } else {
+    await prisma.warehouseItem.create({
+      data: {
+        businessId,
+        catalogProductId: 'ronak-wh-item-1',
+        stockQty: 12,
+        unit: 'عدد',
+      },
+    });
+  }
 }
 
 async function createFixtureBusiness() {

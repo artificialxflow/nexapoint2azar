@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
+import { formatBusinessDateJalali, parseBusinessDateForDb } from '@/src/lib/dates/business-date';
+
+function fmtDate(d: Date | null | undefined): string {
+  return d ? formatBusinessDateJalali(d) : '';
+}
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -95,23 +101,55 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       prisma.checkItem.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' }, take: 200 }),
     ]);
 
-    const totalBankBalance = bankAccounts.reduce((s, a) => s + a.balance, 0);
-    const totalCashBalance = cashboxes.reduce((s, c) => s + c.balance, 0);
-    const totalPettyCash = pettyCashes.reduce((s, p) => s + p.balance, 0);
+    const totalBankBalance = bankAccounts.reduce((s, a) => s + moneyToNumber(a.balance), 0);
+    const totalCashBalance = cashboxes.reduce((s, c) => s + moneyToNumber(c.balance), 0);
+    const totalPettyCash = pettyCashes.reduce((s, p) => s + moneyToNumber(p.balance), 0);
     const pendingReceivableChecks = checks
       .filter((c) => c.direction === 'receivable' && c.status === 'pending')
-      .reduce((s, c) => s + c.amount, 0);
+      .reduce((s, c) => s + moneyToNumber(c.amount), 0);
     const pendingPayableChecks = checks
       .filter((c) => c.direction === 'payable' && c.status === 'pending')
-      .reduce((s, c) => s + c.amount, 0);
+      .reduce((s, c) => s + moneyToNumber(c.amount), 0);
+
+    const mapAccount = (a: (typeof bankAccounts)[number]) => ({
+      ...a,
+      openingBalance: moneyToNumber(a.openingBalance),
+      balance: moneyToNumber(a.balance),
+    });
+    const mapCash = (c: (typeof cashboxes)[number]) => ({
+      ...c,
+      balance: moneyToNumber(c.balance),
+    });
+    const mapPetty = (p: (typeof pettyCashes)[number]) => ({
+      ...p,
+      limitAmount: moneyToNumber(p.limitAmount),
+      balance: moneyToNumber(p.balance),
+    });
+    const mapTx = (t: (typeof transactions)[number]) => ({
+      ...t,
+      date: fmtDate(t.date),
+      amount: moneyToNumber(t.amount),
+    });
+    const mapTransfer = (t: (typeof transfers)[number]) => ({
+      ...t,
+      date: fmtDate(t.date),
+      amount: moneyToNumber(t.amount),
+      fee: moneyToNumber(t.fee),
+    });
+    const mapCheck = (c: (typeof checks)[number]) => ({
+      ...c,
+      issueDate: fmtDate(c.issueDate),
+      dueDate: fmtDate(c.dueDate),
+      amount: moneyToNumber(c.amount),
+    });
 
     return jsonOk({
-      bankAccounts,
-      cashboxes,
-      pettyCashes,
-      transactions,
-      transfers,
-      checks,
+      bankAccounts: bankAccounts.map(mapAccount),
+      cashboxes: cashboxes.map(mapCash),
+      pettyCashes: pettyCashes.map(mapPetty),
+      transactions: transactions.map(mapTx),
+      transfers: transfers.map(mapTransfer),
+      checks: checks.map(mapCheck),
       summary: {
         totalBankBalance,
         totalCashBalance,
@@ -142,8 +180,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           cardNumber: body.cardNumber,
           iban: body.iban,
           currency: body.currency,
-          openingBalance: body.openingBalance,
-          balance: body.openingBalance,
+          openingBalance: moneyFromNumber(body.openingBalance),
+          balance: moneyFromNumber(body.openingBalance),
         },
       });
       return jsonOk(created, { status: 201 });
@@ -156,7 +194,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           name: body.name,
           keeperName: body.keeperName,
           currency: body.currency,
-          balance: body.balance,
+          balance: moneyFromNumber(body.balance),
         },
       });
       return jsonOk(created, { status: 201 });
@@ -168,15 +206,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           businessId,
           title: body.title,
           holderName: body.holderName,
-          limitAmount: body.limitAmount,
-          balance: body.balance,
+          limitAmount: moneyFromNumber(body.limitAmount),
+          balance: moneyFromNumber(body.balance),
         },
       });
       return jsonOk(created, { status: 201 });
     }
 
     if (body.entity === 'transaction') {
-      const delta = body.type === 'deposit' || body.type === 'transfer_in' ? body.amount : -body.amount;
+      const deltaN = body.type === 'deposit' || body.type === 'transfer_in' ? body.amount : -body.amount;
+      const delta = moneyFromNumber(deltaN);
       const created = await prisma.$transaction(async (tx) => {
         const record = await tx.bankTransaction.create({
           data: {
@@ -185,8 +224,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
             cashboxId: body.cashboxId ?? null,
             pettyCashId: body.pettyCashId ?? null,
             type: body.type,
-            amount: body.amount,
-            date: body.date,
+            amount: moneyFromNumber(body.amount),
+            date: parseBusinessDateForDb(body.date),
             counterpartyName: body.counterpartyName,
             referenceNo: body.referenceNo,
             description: body.description,
@@ -219,9 +258,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           businessId,
           fromSource: body.fromSource,
           toTarget: body.toTarget,
-          amount: body.amount,
-          fee: body.fee,
-          date: body.date,
+          amount: moneyFromNumber(body.amount),
+          fee: moneyFromNumber(body.fee),
+          date: parseBusinessDateForDb(body.date),
           referenceNo: body.referenceNo,
           description: body.description,
         },
@@ -238,9 +277,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         sayadId: body.sayadId,
         bankName: body.bankName,
         counterparty: body.counterparty,
-        amount: body.amount,
-        issueDate: body.issueDate,
-        dueDate: body.dueDate,
+        amount: moneyFromNumber(body.amount),
+        issueDate: parseBusinessDateForDb(body.issueDate),
+        dueDate: parseBusinessDateForDb(body.dueDate),
         status: body.status,
         notes: body.notes,
       },
@@ -274,7 +313,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         where: { id: body.id, businessId },
         data: {
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-          ...(body.balance !== undefined ? { balance: body.balance } : {}),
+          ...(body.balance !== undefined ? { balance: moneyFromNumber(body.balance) } : {}),
         },
       });
       if (res.count === 0) return jsonError('NOT_FOUND', 'حساب یافت نشد.', 404);
@@ -286,7 +325,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         where: { id: body.id, businessId },
         data: {
           ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-          ...(body.balance !== undefined ? { balance: body.balance } : {}),
+          ...(body.balance !== undefined ? { balance: moneyFromNumber(body.balance) } : {}),
         },
       });
       if (res.count === 0) return jsonError('NOT_FOUND', 'صندوق یافت نشد.', 404);

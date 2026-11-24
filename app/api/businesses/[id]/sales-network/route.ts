@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber, rateFromNumber, rateToNumber } from '@/src/lib/money/decimal';
+import { requirePersonInBusiness, requireUserExists } from '@/src/lib/erp/people-service';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -14,6 +16,8 @@ const createSchema = z.discriminatedUnion('entity', [
     tier: z.string().optional().default('نماینده'),
     commissionRate: z.number().min(0).max(100).optional().default(5),
     totalSales: z.number().min(0).optional().default(0),
+    personId: z.string().optional().nullable(),
+    userId: z.string().optional().nullable(),
   }),
   z.object({
     entity: z.literal('commission'),
@@ -32,6 +36,8 @@ const patchSchema = z.object({
   status: z.string().optional(),
   commissionRate: z.number().min(0).max(100).optional(),
   totalSales: z.number().min(0).optional(),
+  personId: z.string().optional().nullable(),
+  userId: z.string().optional().nullable(),
 });
 
 const deleteSchema = z.object({
@@ -54,12 +60,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ]);
 
     return jsonOk({
-      members,
-      commissions,
+      members: members.map((m) => ({
+        ...m,
+        commissionRate: rateToNumber(m.commissionRate),
+        totalSales: moneyToNumber(m.totalSales),
+      })),
+      commissions: commissions.map((c) => ({
+        ...c,
+        salesAmount: moneyToNumber(c.salesAmount),
+        commissionAmount: moneyToNumber(c.commissionAmount),
+      })),
       summary: {
         activeMembers: members.filter((m) => m.active).length,
-        totalSales: members.reduce((s, m) => s + m.totalSales, 0),
-        totalCommissions: commissions.reduce((s, c) => s + c.commissionAmount, 0),
+        totalSales: members.reduce((s, m) => s + moneyToNumber(m.totalSales), 0),
+        totalCommissions: commissions.reduce((s, c) => s + moneyToNumber(c.commissionAmount), 0),
       },
     });
   } catch (err) {
@@ -74,6 +88,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const body = createSchema.parse(await req.json());
 
     if (body.entity === 'member') {
+      if (body.personId?.trim()) await requirePersonInBusiness(businessId, body.personId);
+      if (body.userId?.trim()) await requireUserExists(body.userId);
       const count = await prisma.salesNetworkMember.count({ where: { businessId } });
       const created = await prisma.salesNetworkMember.create({
         data: {
@@ -83,8 +99,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           phone: body.phone,
           region: body.region,
           tier: body.tier,
-          commissionRate: body.commissionRate,
-          totalSales: body.totalSales,
+          personId: body.personId?.trim() || null,
+          userId: body.userId?.trim() || null,
+          commissionRate: rateFromNumber(body.commissionRate),
+          totalSales: moneyFromNumber(body.totalSales),
         },
       });
       return jsonOk(created, { status: 201 });
@@ -100,8 +118,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         businessId,
         memberId: body.memberId,
         periodLabel: body.periodLabel,
-        salesAmount: body.salesAmount,
-        commissionAmount: body.commissionAmount,
+        salesAmount: moneyFromNumber(body.salesAmount),
+        commissionAmount: moneyFromNumber(body.commissionAmount),
         status: body.status,
       },
     });
@@ -118,12 +136,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const body = patchSchema.parse(await req.json());
 
     if (body.entity === 'member') {
+      if (body.personId?.trim()) await requirePersonInBusiness(businessId, body.personId);
+      if (body.userId?.trim()) await requireUserExists(body.userId);
       const res = await prisma.salesNetworkMember.updateMany({
         where: { id: body.id, businessId },
         data: {
           ...(body.active !== undefined ? { active: body.active } : {}),
-          ...(body.commissionRate !== undefined ? { commissionRate: body.commissionRate } : {}),
-          ...(body.totalSales !== undefined ? { totalSales: body.totalSales } : {}),
+          ...(body.commissionRate !== undefined ? { commissionRate: rateFromNumber(body.commissionRate) } : {}),
+          ...(body.totalSales !== undefined ? { totalSales: moneyFromNumber(body.totalSales) } : {}),
+          ...(body.personId !== undefined ? { personId: body.personId?.trim() || null } : {}),
+          ...(body.userId !== undefined ? { userId: body.userId?.trim() || null } : {}),
         },
       });
       if (res.count === 0) return jsonError('NOT_FOUND', 'نماینده یافت نشد.', 404);

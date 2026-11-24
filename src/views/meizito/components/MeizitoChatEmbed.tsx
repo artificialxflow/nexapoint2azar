@@ -20,7 +20,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { attachmentScopeForMeizitoChat } from '@/src/lib/attachments/scopes';
 import { idbGetBlob } from '@/src/lib/attachments/idb';
-import { openLocalAttachment, uploadAttachment, uploadLocalAttachment } from '@/src/lib/attachments/client';
+import { openLocalAttachment, uploadAttachment } from '@/src/lib/attachments/client';
 import type { AttachmentRef } from '@/src/types/attachment';
 import { useMeizito } from '@/src/context/MeizitoContext';
 import type {
@@ -330,9 +330,12 @@ export default function MeizitoChatEmbed({ variant = 'full' }: Props) {
       e.target.value = '';
       return;
     }
+    const link = activeBusinessId
+      ? { businessId: activeBusinessId, entityType: 'chat_message' as const }
+      : undefined;
     if (f.type.startsWith('image/')) {
       const path = attachmentScopeForMeizitoChat(activeBusinessId, activeThreadId);
-      const ref = await uploadLocalAttachment(f, path);
+      const ref = await uploadAttachment(f, path, link);
       if (ref) {
         addMessage(activeThreadId, currentUserName, f.name, {
           type: 'image',
@@ -349,7 +352,7 @@ export default function MeizitoChatEmbed({ variant = 'full' }: Props) {
       return;
     }
     const path = attachmentScopeForMeizitoChat(activeBusinessId, activeThreadId);
-    const ref = await uploadLocalAttachment(f, path);
+    const ref = await uploadAttachment(f, path, link);
     const msgType = f.type.startsWith('video/') ? 'video' : 'file';
     if (ref) {
       addMessage(activeThreadId, currentUserName, `فایل: ${f.name}`, {
@@ -383,7 +386,6 @@ export default function MeizitoChatEmbed({ variant = 'full' }: Props) {
       attachmentNames: m.attachmentNames?.length ? [...m.attachmentNames] : undefined,
       attachmentRefs: m.attachmentRefs?.length ? [...m.attachmentRefs] : undefined,
       voiceDurationSec: m.voiceDurationSec,
-      imageDataUrl: m.imageDataUrl,
     });
     setForwardMsg(null);
     setActiveThreadId(targetThreadId);
@@ -426,8 +428,11 @@ export default function MeizitoChatEmbed({ variant = 'full' }: Props) {
             type: blob.type || 'audio/webm',
           });
           const path = attachmentScopeForMeizitoChat(activeBusinessId, activeThreadId);
+          const voiceLink = activeBusinessId
+            ? { businessId: activeBusinessId, entityType: 'chat_message' as const }
+            : undefined;
           try {
-            const ref = await uploadAttachment(file, path);
+            const ref = await uploadAttachment(file, path, voiceLink);
             addMessage(activeThreadId, currentUserName, 'پیام صوتی', {
               type: 'voice',
               voiceDurationSec: sec,
@@ -508,15 +513,6 @@ export default function MeizitoChatEmbed({ variant = 'full' }: Props) {
             <FileText size={12} />
             {ref.name}
           </button>
-          {m.body && <p className="text-xs">{m.body}</p>}
-        </div>
-      );
-    }
-    if (m.type === 'image' && m.imageDataUrl) {
-      return (
-        <div className="space-y-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={m.imageDataUrl} alt={m.attachmentNames[0] ?? 'تصویر'} className="max-w-full rounded-lg max-h-48" />
           {m.body && <p className="text-xs">{m.body}</p>}
         </div>
       );

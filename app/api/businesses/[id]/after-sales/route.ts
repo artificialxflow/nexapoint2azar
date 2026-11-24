@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/src/lib/db/prisma';
 import { handleAuthRouteError, jsonError, jsonOk } from '@/src/lib/auth/api';
 import { requireBusinessAccess } from '@/src/lib/business/access';
+import { moneyFromNumber, moneyToNumber } from '@/src/lib/money/decimal';
 
 const createSchema = z.discriminatedUnion('entity', [
   z.object({
@@ -64,7 +65,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ]);
 
     return jsonOk({
-      tickets,
+      tickets: tickets.map((t) => ({
+        ...t,
+        estimates: t.estimates.map((e) => ({
+          ...e,
+          laborCost: moneyToNumber(e.laborCost),
+          partsCost: moneyToNumber(e.partsCost),
+          totalCost: moneyToNumber(e.totalCost),
+        })),
+      })),
       warranties,
       summary: {
         openTickets: tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed').length,
@@ -125,9 +134,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const created = await prisma.repairEstimate.create({
       data: {
         ticketId: body.ticketId,
-        laborCost: body.laborCost,
-        partsCost: body.partsCost,
-        totalCost: body.laborCost + body.partsCost,
+        laborCost: moneyFromNumber(body.laborCost),
+        partsCost: moneyFromNumber(body.partsCost),
+        totalCost: moneyFromNumber(body.laborCost + body.partsCost),
         approvedByCustomer: body.approvedByCustomer,
         notes: body.notes,
       },
