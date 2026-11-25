@@ -39,6 +39,11 @@
 - [x] `useLayoutEffect` برای اعمال اسکرول پس از layout
 - [x] حذف `onMouseEnter` / `onFocus` prefetch
 
+## دیباگ کلیک منو (prod/UAT)
+
+- [x] `NEXT_PUBLIC_DEBUG_SIDEBAR=true` → لاگ `[sidebar]` در Console
+- [x] `try/catch` روی prefetch و navigate؛ خطای prefetch با `console.error` (همیشه)
+
 ## فاز ۵ — راستی‌آزمایی
 
 - [x] `npx tsc --noEmit`

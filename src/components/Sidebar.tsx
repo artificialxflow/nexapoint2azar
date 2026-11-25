@@ -61,6 +61,11 @@ interface SidebarProps {
 
 const SIDEBAR_SCROLL_KEY = 'nexa-sidebar-scroll-top';
 const SIDEBAR_GROUPS_KEY = 'nexa-sidebar-groups';
+const DEBUG_SIDEBAR = process.env.NEXT_PUBLIC_DEBUG_SIDEBAR === 'true';
+
+function sideLog(...args: unknown[]) {
+  if (DEBUG_SIDEBAR) console.info('[sidebar]', ...args);
+}
 
 function clampSidebarScrollTop(el: HTMLElement, requested: number): number {
   const max = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -448,6 +453,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
   }, []);
 
   const toggleGroup = (groupId: string) => {
+    sideLog('toggleGroup', groupId);
     setExpandedGroups((prev) => {
       const wasOpen = prev[groupId] ?? menuGroups.find((g) => g.id === groupId)?.defaultExpanded ?? false;
       const next: Record<string, boolean> = { ...prev };
@@ -458,6 +464,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
           if (g.collapsible) next[g.id] = g.id === groupId;
         }
       }
+      sideLog('toggleGroup:state', { groupId, wasOpen, next });
       persistExpanded(next);
       return next;
     });
@@ -493,16 +500,6 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
     window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
   };
 
-  const handleMenuClick = (item: MenuItem) => {
-    handleMenuPrefetch(item);
-    if (item.href) {
-      router.push(item.href);
-    } else {
-      onViewChange(item.id as ViewType);
-    }
-    onClose?.();
-  };
-
   const handleMenuPrefetch = (item: MenuItem) => {
     const view = viewForMenuItem(item) ?? (item.id as ViewType);
     prefetchSidebarTarget({
@@ -512,6 +509,28 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
       view,
       href: item.href,
     });
+  };
+
+  const handleMenuClick = (item: MenuItem) => {
+    sideLog('click', { id: item.id, label: item.label, href: item.href ?? null });
+    try {
+      handleMenuPrefetch(item);
+      sideLog('prefetch:ok', item.id);
+    } catch (err) {
+      console.error('[sidebar] prefetch failed', { id: item.id, err });
+    }
+    try {
+      if (item.href) {
+        sideLog('navigate:href', item.href);
+        router.push(item.href);
+      } else {
+        sideLog('navigate:view', item.id);
+        onViewChange(item.id as ViewType);
+      }
+    } catch (err) {
+      console.error('[sidebar] navigate failed', { id: item.id, err });
+    }
+    onClose?.();
   };
 
   const showLabels = !isCollapsed || isMobileOpen;
@@ -672,6 +691,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
               key={item.href}
               type="button"
               onClick={() => {
+                sideLog('click:mobile', item.href);
                 router.push(item.href);
                 onClose?.();
               }}
