@@ -735,11 +735,20 @@ export async function handleMeizitoRequest(
     const snap = await loadWorkspaceSnapshot(businessId);
     const cardId = String(body.cardId ?? '');
     const columnId = String(body.columnId ?? '');
+    const index =
+      typeof body.index === 'number' && Number.isFinite(body.index)
+        ? Math.max(0, Math.floor(body.index))
+        : undefined;
     const card = snap.cards.find((c) => c.id === cardId);
-    if (card) {
+    const targetCol = snap.columns.find((c) => c.id === columnId);
+    if (card && targetCol && card.boardId === targetCol.boardId) {
       removeCardIdFromAllColumns(snap, cardId);
       card.columnId = columnId;
-      appendCardIdToColumn(snap, columnId, cardId);
+      if (!Array.isArray(targetCol.cardIds)) targetCol.cardIds = [];
+      targetCol.cardIds = targetCol.cardIds.filter((id) => id !== cardId);
+      const insertAt =
+        index !== undefined ? Math.min(index, targetCol.cardIds.length) : targetCol.cardIds.length;
+      targetCol.cardIds.splice(insertAt, 0, cardId);
       prepareWorkspaceSnapshot(snap, businessId);
       await persistWorkspaceSnapshot(businessId, snap);
     }

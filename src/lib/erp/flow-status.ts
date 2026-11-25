@@ -44,6 +44,11 @@ export const WAREHOUSE_VOUCHER_STATUS_LABELS: Record<WarehouseVoucherStatus, str
   cancelled: 'لغو شده',
 };
 
+export const WAREHOUSE_RECEIPT_STATUS_LABELS = {
+  pending: 'در انتظار ثبت',
+  posted: 'ثبت شده',
+} as const;
+
 export const CRM_LEAD_STATUS_LABELS: Record<CrmLeadStatus, string> = {
   new: 'جدید',
   in_progress: 'در حال پیگیری',
@@ -158,6 +163,15 @@ export function labelStoreOrderStatus(status: StoreOrderStatus): string {
 
 export function labelWarehouseVoucherStatus(status: WarehouseVoucherStatus): string {
   return WAREHOUSE_VOUCHER_STATUS_LABELS[status];
+}
+
+export function labelWarehouseReceiptStatus(
+  status: 'pending' | 'posted' | string | undefined
+): string {
+  const key = (status ?? '').trim();
+  if (key === 'posted') return WAREHOUSE_RECEIPT_STATUS_LABELS.posted;
+  if (key === 'pending') return WAREHOUSE_RECEIPT_STATUS_LABELS.pending;
+  return labelWarehouseVoucherStatus(parseWarehouseVoucherStatus(key));
 }
 
 export function labelCrmLeadStatus(status: CrmLeadStatus): string {

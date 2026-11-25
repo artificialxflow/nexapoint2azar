@@ -91,10 +91,19 @@ export async function apiUpdateCard(
   });
 }
 
-export async function apiMoveCard(businessId: string, cardId: string, columnId: string) {
+export async function apiMoveCard(
+  businessId: string,
+  cardId: string,
+  columnId: string,
+  index?: number
+) {
   return meizitoFetch<{ card: MeizitoCard }>(businessId, '/card-move', {
     method: 'POST',
-    body: JSON.stringify({ cardId, columnId }),
+    body: JSON.stringify({
+      cardId,
+      columnId,
+      ...(index !== undefined ? { index } : {}),
+    }),
   });
 }
 

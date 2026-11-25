@@ -11,6 +11,11 @@ import {
 import { useWarehouseModuleState } from '@/src/hooks/useWarehouseModuleState';
 import type { WarehouseLocation } from '@/src/types/warehouse';
 import type { StocktakingSessionRecord, WarehouseVoucherRecord } from '@/src/types/production';
+import {
+  labelWarehouseReceiptStatus,
+  labelWarehouseVoucherStatus,
+  parseWarehouseVoucherStatus,
+} from '@/src/lib/erp/flow-status';
 
 type WarehouseTab =
   | 'warehouses'
@@ -383,9 +388,18 @@ export default function WarehouseView() {
               <option value="issue">حواله خروج</option>
               <option value="transfer">انتقال بین انبار</option>
             </select>
-            <select className="nexa-input" value={voucherDraft.warehouseReceiptStatus} onChange={(e) => setVoucherDraft((s) => ({ ...s, warehouseReceiptStatus: e.target.value as 'pending' | 'posted' }))}>
-              <option value="pending">pending</option>
-              <option value="posted">posted</option>
+            <select
+              className="nexa-input"
+              value={voucherDraft.warehouseReceiptStatus}
+              onChange={(e) =>
+                setVoucherDraft((s) => ({
+                  ...s,
+                  warehouseReceiptStatus: e.target.value as 'pending' | 'posted',
+                }))
+              }
+            >
+              <option value="pending">{labelWarehouseReceiptStatus('pending')}</option>
+              <option value="posted">{labelWarehouseReceiptStatus('posted')}</option>
             </select>
           </div>
           <div className="grid md:grid-cols-3 gap-2">
@@ -487,8 +501,8 @@ export default function WarehouseView() {
                 <th className="text-right">تاریخ</th>
                 <th className="text-right">نوع</th>
                 <th className="text-right">فاکتور مرجع</th>
-                <th className="text-right">وضعیت</th>
-                <th className="text-right">WarehouseReceiptStatus</th>
+                <th className="text-right">وضعیت حواله</th>
+                <th className="text-right">وضعیت رسید انبار</th>
                 <th className="text-right">آیتم‌ها</th>
               </tr>
             </thead>
@@ -499,8 +513,8 @@ export default function WarehouseView() {
                   <td>{x.date}</td>
                   <td>{x.type === 'issue' ? 'حواله خروج' : 'انتقال'}</td>
                   <td>{x.sourceInvoiceNumber || '-'}</td>
-                  <td>{x.status}</td>
-                  <td>{x.warehouseReceiptStatus}</td>
+                  <td>{labelWarehouseVoucherStatus(parseWarehouseVoucherStatus(x.status))}</td>
+                  <td>{labelWarehouseReceiptStatus(x.warehouseReceiptStatus)}</td>
                   <td>{x.items.length}</td>
                 </tr>
               ))}

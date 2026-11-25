@@ -166,7 +166,9 @@ export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<W
 
   const meizitoProjects: MeizitoProject[] = projects.map((p) => {
     const junction = membersByProject.get(p.id) ?? [];
-    const memberIdsFromJunction = junction.map((m) => m.personId).filter((id): id is string => Boolean(id));
+    const memberIdsFromJunction = junction
+      .map((m) => m.personId ?? m.userId)
+      .filter((id): id is string => Boolean(id));
     const membersFromJunction = junction
       .map((m) => m.displayName || '')
       .filter((name) => name.length > 0);
@@ -193,6 +195,33 @@ export async function loadWorkspaceSnapshotFromDb(businessId: string): Promise<W
     activeBoardId: meta?.activeBoardId ?? null,
     activeNoteBoardId: meta?.activeNoteBoardId ?? null,
   };
+}
+
+async function resolveProjectMemberRef(
+  tx: Prisma.TransactionClient,
+  businessId: string,
+  ref: string
+): Promise<{ personId?: string; userId?: string; displayName: string } | null> {
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+
+  const person = await tx.person.findUnique({
+    where: { businessId_personId: { businessId, personId: trimmed } },
+    select: { personId: true, displayName: true },
+  });
+  if (person) {
+    return { personId: person.personId, displayName: person.displayName || '' };
+  }
+
+  const user = await tx.user.findUnique({
+    where: { id: trimmed },
+    select: { id: true, displayName: true },
+  });
+  if (user) {
+    return { userId: user.id, displayName: user.displayName || '' };
+  }
+
+  return null;
 }
 
 export async function saveWorkspaceSnapshotToDb(
@@ -387,28 +416,34 @@ export async function saveWorkspaceSnapshotToDb(
           phases: (proj.phases ?? []) as unknown as Prisma.InputJsonValue,
         },
       });
-      const personIds = proj.memberIds ?? [];
-      for (let i = 0; i < personIds.length; i++) {
+      const memberRefs = proj.memberIds ?? [];
+      let memberSort = 0;
+      for (const ref of memberRefs) {
+        const resolved = await resolveProjectMemberRef(tx, businessId, ref);
+        if (!resolved) continue;
         await tx.workspaceProjectMember.create({
           data: {
             businessId,
             projectId: proj.id,
-            personId: personIds[i],
-            displayName: '',
-            sortOrder: i,
+            personId: resolved.personId ?? null,
+            userId: resolved.userId ?? null,
+            displayName: resolved.displayName,
+            sortOrder: memberSort++,
           },
         });
       }
       const names = proj.members ?? [];
-      for (let i = 0; i < names.length; i++) {
-        await tx.workspaceProjectMember.create({
-          data: {
-            businessId,
-            projectId: proj.id,
-            displayName: names[i],
-            sortOrder: personIds.length + i,
-          },
-        });
+      if (memberRefs.length === 0) {
+        for (let i = 0; i < names.length; i++) {
+          await tx.workspaceProjectMember.create({
+            data: {
+              businessId,
+              projectId: proj.id,
+              displayName: names[i],
+              sortOrder: i,
+            },
+          });
+        }
       }
     }
   }, { timeout: 60_000 });

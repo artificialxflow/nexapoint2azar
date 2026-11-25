@@ -47,8 +47,53 @@ const DEFAULT_PRICE_LISTS: PriceList[] = [
   { id: 'pl-retail', name: 'نرخ پایه', tier: 'retail' },
 ];
 
-function rowToProduct(data: unknown): Product {
-  return productSchema.parse(data);
+const CATALOG_PRODUCT_FALLBACK = {
+  categoryIds: [] as string[],
+  images: { gallery: [] as string[] },
+  prices: {} as Record<string, number>,
+  purchasePrice: 0,
+  units: { main: 'عدد', hasSecondary: false },
+  inventory: {
+    trackStock: true,
+    reorderPoint: 0,
+    minOrder: 1,
+    leadTimeDays: 0,
+  },
+  tax: {
+    hasSalesTax: true,
+    salesTaxRate: 10,
+    hasPurchaseTax: false,
+    purchaseTaxRate: 0,
+    taxType: '۱۲- سایر کالاها',
+  },
+};
+
+function rowToProduct(row: {
+  productId: string;
+  name: string;
+  code: string;
+  accountingCode: string;
+  type: string;
+  status: string;
+  data: unknown;
+}): Product {
+  const data =
+    typeof row.data === 'object' && row.data !== null && !Array.isArray(row.data)
+      ? (row.data as Record<string, unknown>)
+      : {};
+  const merged = {
+    ...CATALOG_PRODUCT_FALLBACK,
+    ...data,
+    id: row.productId,
+    name: row.name?.trim() || String(data.name ?? 'کالا'),
+    code: row.code?.trim() || String(data.code ?? row.productId),
+    accountingCode:
+      String(data.accountingCode ?? row.accountingCode ?? row.code ?? row.productId).trim() ||
+      row.productId,
+    type: row.type === 'services' || data.type === 'services' ? 'services' : 'goods',
+    status: row.status === 'inactive' || data.status === 'inactive' ? 'inactive' : 'active',
+  };
+  return productSchema.parse(merged);
 }
 
 function newProductId() {
@@ -73,7 +118,7 @@ export async function getCatalog(businessId: string) {
     prisma.catalogProduct.findMany({ where: { businessId }, orderBy: { createdAt: 'asc' } }),
   ]);
   return {
-    products: productRows.map((r) => rowToProduct(r.data)),
+    products: productRows.map((r) => rowToProduct(r)),
     productCategories: (meta.productCategories as unknown as ProductCategory[]) ?? [],
     priceLists: (meta.priceLists as unknown as PriceList[]) ?? DEFAULT_PRICE_LISTS,
   };
@@ -163,7 +208,7 @@ export async function updateProduct(businessId: string, productId: string, patch
   if (!existing) {
     throw new CatalogNotFoundError('کالا یافت نشد.');
   }
-  const current = rowToProduct(existing.data);
+  const current = rowToProduct(existing);
   const next = productSchema.parse({ ...current, ...patch, id: productId, accountingCode: current.accountingCode });
   const updated = await prisma.catalogProduct.update({
     where: { businessId_productId: { businessId, productId } },
@@ -175,7 +220,7 @@ export async function updateProduct(businessId: string, productId: string, patch
       data: next as unknown as Prisma.InputJsonValue,
     },
   });
-  const parsed = rowToProduct(updated.data);
+  const parsed = rowToProduct(updated);
   await syncStoreProductsFromCatalog(businessId, productId, parsed);
   return parsed;
 }

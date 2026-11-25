@@ -1045,7 +1045,7 @@ export function MeizitoProvider({
             return { ...col, cardIds: ids };
           });
         });
-        void apiMoveCard(activeBusinessId, cardId, toColumnId)
+        void apiMoveCard(activeBusinessId, cardId, toColumnId, index)
           .then(() => {
             emitNexaEvent({
               type: 'meizito.card.moved',
