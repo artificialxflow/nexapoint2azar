@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
 import { useMeizito } from '@/src/context/MeizitoContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { useSettings } from '@/src/context/SettingsContext';
 import {
   isDailyReportN4Enabled,
@@ -56,6 +57,7 @@ type Props = {
 };
 
 export default function ReportsPanel({ section: sectionProp = 'daily', onSectionChange }: Props) {
+  useCatalogEnsure('people');
   const [section, setSection] = useState<MeizitoReportsSection>(sectionProp);
   const [filterDate, setFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);

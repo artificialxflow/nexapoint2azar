@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import type { Person } from '@/src/types/person';
 
 export type PersonComboboxExtraOption = { key: string; label: string; hint?: string };
@@ -25,6 +26,7 @@ export default function PersonCombobox({
   className = '',
   extraOptions = [],
 }: Props) {
+  useCatalogEnsure('people');
   const { people } = useCatalog();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(value);

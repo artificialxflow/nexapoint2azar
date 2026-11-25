@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowUpCircle, FileDown, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { formatToman } from '@/src/lib/pricing';
 import { useCommerceModuleState } from '@/src/hooks/useCommerceModuleState';
 
@@ -95,6 +96,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export default function PurchasingReset() {
+  useCatalogEnsure('people+catalog');
   const { people, products } = useCatalog();
   const { module: commerce, persist: persistCommerce, saveError: commerceSaveError } =
     useCommerceModuleState();

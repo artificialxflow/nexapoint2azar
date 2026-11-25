@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { useBusinessOptional } from '@/src/context/BusinessContext';
+import { prefetchSidebarTarget } from '@/src/lib/dashboard/sidebar-prefetch';
 import {
   LayoutDashboard,
   Users,
@@ -373,6 +376,8 @@ function isMobileNavActive(
 
 export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClose }: SidebarProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const business = useBusinessOptional();
   const { logout } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -473,6 +478,17 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
     onClose?.();
   };
 
+  const handleMenuPrefetch = (item: MenuItem) => {
+    const view = viewForMenuItem(item) ?? (item.id as ViewType);
+    prefetchSidebarTarget({
+      router,
+      queryClient,
+      businessId: business?.activeBusinessId ?? null,
+      view,
+      href: item.href,
+    });
+  };
+
   const showLabels = !isCollapsed || isMobileOpen;
 
   const renderMenuItem = (item: MenuItem, isChild = false) => {
@@ -481,6 +497,8 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
       <button
         key={item.id}
         type="button"
+        onMouseEnter={() => handleMenuPrefetch(item)}
+        onFocus={() => handleMenuPrefetch(item)}
         onClick={() => handleMenuClick(item)}
         className={cn(
           'w-full flex items-center gap-3 rounded-xl transition-all duration-200 group relative',

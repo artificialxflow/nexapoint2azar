@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useBusinessOptional } from '@/src/context/BusinessContext';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { parseApiJson } from '@/src/lib/http/parse-api-response';
 
 type ApiOrder = {
@@ -66,6 +67,7 @@ const tabs = [
 const fm = (n: number) => n.toLocaleString('fa-IR');
 
 export default function Orders() {
+  useCatalogEnsure('people');
   const businessCtx = useBusinessOptional();
   const activeBusinessId = businessCtx?.activeBusinessId ?? null;
   const { people } = useCatalog();

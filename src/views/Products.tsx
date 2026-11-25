@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import {
   BarChart,
   Bar,
@@ -153,6 +154,7 @@ export default function Products() {
     catalogModuleSaveError,
     clearCatalogModuleSaveError,
   } = useCatalog();
+  useCatalogEnsure('catalog');
 
   const [viewMode, setViewMode] = useState<ProductViewMode>('list');
   const [selectedId, setSelectedId] = useState<string | null>(null);

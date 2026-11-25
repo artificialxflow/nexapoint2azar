@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { formatToman, getProductPriceForInvoice } from '@/src/lib/pricing';
 import { useCommerceModuleState } from '@/src/hooks/useCommerceModuleState';
 
@@ -89,6 +90,7 @@ const salesTabs: Array<{ id: SalesTab; label: string }> = [
 ];
 
 export default function Sales() {
+  useCatalogEnsure('people+catalog');
   const { people, products, priceLists } = useCatalog();
   const { module: commerce, persist: persistCommerce, saveError: commerceSaveError } =
     useCommerceModuleState();

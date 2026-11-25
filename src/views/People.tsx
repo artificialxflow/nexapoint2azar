@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, Building2, Download, Plus, Search, Trash2, User, UserCircle, Users2, Wallet } from 'lucide-react';
 import { newId, useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import type {
   MoneyDocument,
   Person,
@@ -138,6 +139,7 @@ function cloneForDraft(p: Person): Person {
 }
 
 export default function People() {
+  useCatalogEnsure('full');
   const {
     people,
     receipts,

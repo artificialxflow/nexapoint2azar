@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Eye, Plus, Search, Trash2 } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { useProductionModuleState } from '@/src/hooks/useProductionModuleState';
 import type {
   ProductionFormulaRecord,
@@ -111,6 +112,7 @@ function SectionTable({
 }
 
 export default function Production() {
+  useCatalogEnsure('people+catalog');
   const { products, people } = useCatalog();
   const { module, persist, saveError } = useProductionModuleState();
   const formulaList = module.formulas;

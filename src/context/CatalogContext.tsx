@@ -38,6 +38,19 @@ import type {
   VendorRecord,
 } from '@/src/types/person';
 import type { Product, ProductCategory } from '@/src/types/product';
+import {
+  readCatalogBusinessCache,
+  writeCatalogBusinessCache,
+  type CatalogLoadFlags,
+} from '@/src/lib/erp/catalog-business-cache';
+import { registerCatalogPrefetchDelegate } from '@/src/lib/dashboard/sidebar-prefetch';
+
+export type CatalogHydrationScope =
+  | 'people'
+  | 'catalog'
+  | 'peopleModule'
+  | 'people+catalog'
+  | 'full';
 
 function newId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -114,6 +127,9 @@ interface CatalogContextValue {
     productCategories?: ProductCategory[];
     priceLists?: PriceList[];
   }) => Promise<boolean>;
+  activeBusinessId: string | null;
+  catalogHydrationFlags: CatalogLoadFlags;
+  ensureCatalogScope: (scope: CatalogHydrationScope) => Promise<void>;
 }
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -276,6 +292,16 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const moduleSaveTimerRef = useRef<number | null>(null);
   const catalogSaveTimerRef = useRef<number | null>(null);
   const moduleSaveInFlightRef = useRef(false);
+  const loadFlagsRef = useRef<CatalogLoadFlags>({
+    people: false,
+    catalog: false,
+    peopleModule: false,
+  });
+  const loadInflightRef = useRef<{
+    people?: Promise<void>;
+    catalog?: Promise<void>;
+    peopleModule?: Promise<void>;
+  }>({});
 
   const priceListIds = useMemo(() => priceLists.map((x) => x.id), [priceLists]);
 
@@ -319,13 +345,192 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     }, 150);
   }, []);
 
+  const persistCacheSnapshot = useCallback(() => {
+    if (!activeBusinessId || FRONTEND_ONLY) return;
+    writeCatalogBusinessCache(activeBusinessId, {
+      people,
+      products,
+      receipts,
+      payments,
+      shareholders,
+      vendors,
+      priceLists,
+      personCategories,
+      productCategories,
+      personGroups,
+      peopleModuleHydrated,
+      flags: { ...loadFlagsRef.current },
+    });
+  }, [
+    activeBusinessId,
+    people,
+    products,
+    receipts,
+    payments,
+    shareholders,
+    vendors,
+    priceLists,
+    personCategories,
+    productCategories,
+    personGroups,
+    peopleModuleHydrated,
+  ]);
+
+  const runEnsurePeople = useCallback(
+    async (businessId: string) => {
+      if (loadFlagsRef.current.people) return;
+      if (loadInflightRef.current.people) {
+        await loadInflightRef.current.people;
+        return;
+      }
+      const job = refreshPeopleFromApi(businessId)
+        .then(() => {
+          loadFlagsRef.current.people = true;
+        })
+        .finally(() => {
+          delete loadInflightRef.current.people;
+        });
+      loadInflightRef.current.people = job;
+      await job;
+    },
+    [refreshPeopleFromApi]
+  );
+
+  const runEnsureCatalog = useCallback(
+    async (businessId: string) => {
+      if (loadFlagsRef.current.catalog) return;
+      if (loadInflightRef.current.catalog) {
+        await loadInflightRef.current.catalog;
+        return;
+      }
+      const job = refreshCatalogFromApi(businessId)
+        .then(() => {
+          loadFlagsRef.current.catalog = true;
+        })
+        .finally(() => {
+          delete loadInflightRef.current.catalog;
+        });
+      loadInflightRef.current.catalog = job;
+      await job;
+    },
+    [refreshCatalogFromApi]
+  );
+
+  const runEnsurePeopleModule = useCallback(
+    async (businessId: string) => {
+      if (loadFlagsRef.current.peopleModule && peopleModuleHydrated) return;
+      if (loadInflightRef.current.peopleModule) {
+        await loadInflightRef.current.peopleModule;
+        return;
+      }
+      const job = refreshPeopleModuleFromApi(businessId)
+        .then(() => {
+          loadFlagsRef.current.peopleModule = true;
+        })
+        .finally(() => {
+          delete loadInflightRef.current.peopleModule;
+        });
+      loadInflightRef.current.peopleModule = job;
+      await job;
+    },
+    [peopleModuleHydrated, refreshPeopleModuleFromApi]
+  );
+
+  const ensureCatalogScope = useCallback(
+    async (scope: CatalogHydrationScope) => {
+      if (FRONTEND_ONLY || !activeBusinessId) return;
+      const businessId = activeBusinessId;
+      if (scope === 'people' || scope === 'people+catalog' || scope === 'full') {
+        await runEnsurePeople(businessId);
+      }
+      if (scope === 'catalog' || scope === 'people+catalog' || scope === 'full') {
+        await runEnsureCatalog(businessId);
+      }
+      if (scope === 'peopleModule' || scope === 'full') {
+        await runEnsurePeopleModule(businessId);
+      }
+      persistCacheSnapshot();
+    },
+    [
+      activeBusinessId,
+      persistCacheSnapshot,
+      runEnsureCatalog,
+      runEnsurePeople,
+      runEnsurePeopleModule,
+    ]
+  );
+
   useEffect(() => {
-    if (FRONTEND_ONLY || !activeBusinessId) return;
+    loadInflightRef.current = {};
+    if (FRONTEND_ONLY || !activeBusinessId) {
+      loadFlagsRef.current = { people: false, catalog: false, peopleModule: false };
+      return;
+    }
+    const cached = readCatalogBusinessCache(activeBusinessId);
+    if (cached) {
+      setPeople(cached.people);
+      setProducts(cached.products);
+      setReceipts(cached.receipts.map(cloneMoneyDoc));
+      setPayments(cached.payments.map(cloneMoneyDoc));
+      setShareholders(cached.shareholders.map((x) => ({ ...x })));
+      setVendors(cached.vendors.map((x) => ({ ...x })));
+      setPriceLists(cached.priceLists.map((x) => ({ ...x })));
+      setPersonCategories(cached.personCategories.map((x) => ({ ...x })));
+      setProductCategories(cached.productCategories.map((x) => ({ ...x })));
+      setPersonGroups(
+        cached.personGroups.map((x) => ({ ...x, levels: x.levels.map((l) => ({ ...l })) }))
+      );
+      setPeopleModuleHydrated(cached.peopleModuleHydrated);
+      loadFlagsRef.current = { ...cached.flags };
+      skipModulePersistRef.current = true;
+      skipCatalogPersistRef.current = true;
+      window.setTimeout(() => {
+        skipModulePersistRef.current = false;
+        skipCatalogPersistRef.current = false;
+      }, 150);
+      void (async () => {
+        const tasks: Promise<void>[] = [];
+        if (cached.flags.people) tasks.push(runEnsurePeople(activeBusinessId));
+        if (cached.flags.catalog) tasks.push(runEnsureCatalog(activeBusinessId));
+        if (cached.flags.peopleModule) tasks.push(runEnsurePeopleModule(activeBusinessId));
+        await Promise.all(tasks);
+        persistCacheSnapshot();
+      })();
+      return;
+    }
+    setPeople([]);
+    setProducts([]);
+    setReceipts([]);
+    setPayments([]);
+    setShareholders([]);
+    setVendors([]);
+    setPersonCategories([]);
+    setProductCategories([]);
+    setPriceLists(DEFAULT_PRICE_LISTS);
+    setPersonGroups([]);
     setPeopleModuleHydrated(false);
-    void refreshCatalogFromApi(activeBusinessId).catch(() => undefined);
-    void refreshPeopleFromApi(activeBusinessId).catch(() => undefined);
-    void refreshPeopleModuleFromApi(activeBusinessId).catch(() => undefined);
-  }, [activeBusinessId, refreshCatalogFromApi, refreshPeopleFromApi, refreshPeopleModuleFromApi]);
+    loadFlagsRef.current = { people: false, catalog: false, peopleModule: false };
+  }, [
+    activeBusinessId,
+    persistCacheSnapshot,
+    runEnsureCatalog,
+    runEnsurePeople,
+    runEnsurePeopleModule,
+  ]);
+
+  useEffect(() => {
+    persistCacheSnapshot();
+  }, [persistCacheSnapshot]);
+
+  useEffect(() => {
+    registerCatalogPrefetchDelegate((businessId, scope) => {
+      if (businessId !== activeBusinessId) return;
+      void ensureCatalogScope(scope);
+    });
+    return () => {
+      registerCatalogPrefetchDelegate(() => undefined);
+    };
+  }, [activeBusinessId, ensureCatalogScope]);
 
   const flushCatalogModuleSave = useCallback(
     async (patch?: { productCategories?: ProductCategory[]; priceLists?: PriceList[] }): Promise<boolean> => {
@@ -1056,10 +1261,15 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       catalogModuleSaveError,
       clearCatalogModuleSaveError,
       flushCatalogModuleSave,
+      activeBusinessId,
+      catalogHydrationFlags: loadFlagsRef.current,
+      ensureCatalogScope,
     }),
     [
       people,
       products,
+      activeBusinessId,
+      ensureCatalogScope,
       receipts,
       payments,
       shareholders,

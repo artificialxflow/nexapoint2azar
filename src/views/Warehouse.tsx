@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Eye, Plus, Search, Trash2 } from 'lucide-react';
 import { useCatalog } from '@/src/context/CatalogContext';
+import { useCatalogEnsure } from '@/src/hooks/useCatalogEnsure';
 import { useBusinessOptional } from '@/src/context/BusinessContext';
 import { FRONTEND_ONLY } from '@/src/lib/frontend-config';
 import {
@@ -72,6 +73,7 @@ const seedWarehouses: WarehouseRecord[] = [
 ];
 
 export default function WarehouseView() {
+  useCatalogEnsure('catalog');
   const { products } = useCatalog();
   const business = useBusinessOptional();
   const businessId = business?.activeBusinessId ?? null;

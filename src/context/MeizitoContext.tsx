@@ -684,7 +684,7 @@ export function MeizitoProvider({
     if (workspaceQuery.data) {
       applyWorkspaceSnapshot(workspaceQuery.data);
       setMeizitoHydration((prev) => ({ ...prev, workspace: true }));
-    } else if (workspaceQuery.isFetching && !workspaceQuery.isPlaceholderData) {
+    } else if (workspaceQuery.isPending && !workspaceQuery.data) {
       setMeizitoHydration((prev) => ({ ...prev, workspace: false }));
     }
   }, [
@@ -692,10 +692,16 @@ export function MeizitoProvider({
     applyWorkspaceSnapshot,
     dataSources.workspace,
     workspaceQuery.data,
-    workspaceQuery.isFetching,
+    workspaceQuery.isPending,
   ]);
 
+  const prevBusinessIdRef = useRef<string | null>(null);
   useEffect(() => {
+    const prev = prevBusinessIdRef.current;
+    if (prev && prev !== activeBusinessId) {
+      queryClient.removeQueries({ queryKey: ['meizito', prev] });
+    }
+    prevBusinessIdRef.current = activeBusinessId;
     lazyModulesLoadedRef.current.clear();
     if (!activeBusinessId) return;
     setMeizitoHydration((prev) => ({
@@ -705,7 +711,7 @@ export function MeizitoProvider({
       letters: false,
       requests: false,
     }));
-  }, [activeBusinessId]);
+  }, [activeBusinessId, queryClient]);
 
   const useWorkspaceApi = dataSources.workspace === 'api' && !!activeBusinessId;
   const useRequestsApi = dataSources.requests === 'api' && !!activeBusinessId;
