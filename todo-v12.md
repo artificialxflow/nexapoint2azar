@@ -41,9 +41,8 @@
 
 ## دیباگ کلیک منو (prod/UAT)
 
-- [x] ناوبری با `next/link` (نه `router.push` قبل از prefetch)
-- [x] prefetch داده پس از کلیک با `skipRoutePrefetch`
-- [x] fallback `location.assign` برای آیتم‌های بدون href
+- [x] حذف `cacheComponents` / `partialPrefetching` از `next.config.ts` (شکست client nav)
+- [x] سایدبار: `<a href>` بارگذاری کامل صفحه؛ ERP بدون href → `location.assign`
 
 ## فاز ۵ — راستی‌آزمایی
 

@@ -10,8 +10,7 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
-  cacheComponents: true,
-  partialPrefetching: true,
+  /* cacheComponents + partialPrefetching broke App Router client nav on prod (v12) */
   turbopack: {
     rules: {
       "*.css": {

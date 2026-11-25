@@ -1,9 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
-import { useBusinessOptional } from '@/src/context/BusinessContext';
-import { prefetchSidebarTarget } from '@/src/lib/dashboard/sidebar-prefetch';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard,
   Users,
@@ -401,9 +397,6 @@ function isMobileNavActive(
 }
 
 export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClose }: SidebarProps) {
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const business = useBusinessOptional();
   const { logout } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -494,41 +487,9 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
     window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
   };
 
-  const scheduleDataPrefetch = useCallback(
-    (item: MenuItem) => {
-      window.setTimeout(() => {
-        try {
-          const view = viewForMenuItem(item) ?? (item.id as ViewType);
-          prefetchSidebarTarget({
-            router,
-            queryClient,
-            businessId: business?.activeBusinessId ?? null,
-            view,
-            href: item.href,
-            skipRoutePrefetch: true,
-          });
-        } catch (err) {
-          console.error('[sidebar] prefetch failed', { id: item.id, err });
-        }
-      }, 0);
-    },
-    [router, queryClient, business?.activeBusinessId]
-  );
-
   const handleMenuNavigateNoHref = (item: MenuItem) => {
-    console.log('[SIDEBAR-CLICK]', item.id);
-    try {
-      onViewChange(item.id as ViewType);
-    } catch (err) {
-      console.error('[sidebar] navigate failed', { id: item.id, err });
-      window.location.assign(`/dashboard/${item.id}`);
-      return;
-    }
     onClose?.();
-    scheduleDataPrefetch(item);
-    window.setTimeout(() => {
-      console.log('[SIDEBAR-AFTER]', window.location.pathname + window.location.search);
-    }, 200);
+    window.location.assign(`/dashboard/${item.id}`);
   };
 
   const showLabels = !isCollapsed || isMobileOpen;
@@ -555,22 +516,15 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
 
     if (item.href) {
       return (
-        <Link
+        <a
           key={item.id}
           href={item.href}
-          onClick={() => {
-            console.log('[SIDEBAR-CLICK]', item.href);
-            onClose?.();
-            scheduleDataPrefetch(item);
-            window.setTimeout(() => {
-              console.log('[SIDEBAR-AFTER]', window.location.pathname + window.location.search);
-            }, 200);
-          }}
+          onClick={() => onClose?.()}
           className={className}
         >
           {icon}
           {showLabels && <span className="font-medium whitespace-nowrap">{item.label}</span>}
-        </Link>
+        </a>
       );
     }
 
@@ -706,13 +660,10 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
         {mobilePrimaryNav.map((item) => {
           const active = isMobileNavActive(item, pathname, tabParam, currentView);
           return (
-            <Link
+            <a
               key={item.href}
               href={item.href}
-              onClick={() => {
-                console.log('[SIDEBAR-CLICK]', item.href);
-                onClose?.();
-              }}
+              onClick={() => onClose?.()}
               className={cn(
                 'p-1.5 rounded-xl transition-all flex flex-col items-center gap-0.5 min-w-0 flex-1 max-w-[72px]',
                 active ? 'bg-nexa-accent text-white' : 'text-white/40'
@@ -721,7 +672,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
             >
               <item.icon size={20} />
               <span className="text-[8px] font-bold truncate w-full text-center">{item.label}</span>
-            </Link>
+            </a>
           );
         })}
       </nav>
