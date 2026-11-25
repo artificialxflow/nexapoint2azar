@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Plus,
@@ -37,6 +37,202 @@ function newLocalId() {
 /** فاصلهٔ داخل عنوان/نام حفظ می‌شود؛ فقط لبه‌ها بریده می‌شود */
 function trimEdges(value: string) {
   return value.replace(/^\s+|\s+$/g, '');
+}
+
+const KANBAN_CARD_MIME = 'text/meizito-card';
+
+function readKanbanDragCardId(e: React.DragEvent, fallbackId: string | null): string {
+  const fromDt =
+    e.dataTransfer.getData(KANBAN_CARD_MIME) || e.dataTransfer.getData('text/plain') || '';
+  const id = (fromDt || fallbackId || '').trim();
+  return id;
+}
+
+function acceptKanbanCardDrop(e: React.DragEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'move';
+}
+
+function computeKanbanInsertIndex(
+  columnCardIds: string[],
+  draggedCardId: string,
+  beforeCardId: string | null
+): number {
+  const ids = columnCardIds.filter((id) => id !== draggedCardId);
+  if (!beforeCardId) return ids.length;
+  const idx = ids.indexOf(beforeCardId);
+  return idx < 0 ? ids.length : idx;
+}
+
+function startKanbanCardDrag(e: React.DragEvent, cardId: string, onActive: (id: string | null) => void) {
+  e.stopPropagation();
+  onActive(cardId);
+  e.dataTransfer.setData(KANBAN_CARD_MIME, cardId);
+  e.dataTransfer.setData('text/plain', cardId);
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function endKanbanCardDrag(onActive: (id: string | null) => void) {
+  onActive(null);
+}
+
+type KanbanColumnLite = { id: string; title: string };
+
+type KanbanBoardCardProps = {
+  card: MeizitoCard;
+  columnId: string;
+  columnCardIds: string[];
+  boardCols: KanbanColumnLite[];
+  labelPalette: { id: string; name: string; color: string }[];
+  dragFallbackRef: React.MutableRefObject<string | null>;
+  setDragActive: (id: string | null) => void;
+  onOpenDetail: (card: MeizitoCard) => void;
+  onToggleStar: (cardId: string) => void;
+  onDeleteCard: (cardId: string) => void;
+  onMoveCard: (cardId: string, toColumnId: string, index: number) => void;
+};
+
+function KanbanBoardCard({
+  card,
+  columnId,
+  columnCardIds,
+  boardCols,
+  labelPalette,
+  dragFallbackRef,
+  setDragActive,
+  onOpenDetail,
+  onToggleStar,
+  onDeleteCard,
+  onMoveCard,
+}: KanbanBoardCardProps) {
+  const showColumnPicker = boardCols.length > 1;
+
+  const handleDropOnCard = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const draggedId = readKanbanDragCardId(e, dragFallbackRef.current);
+    if (!draggedId || draggedId === card.id) return;
+    const index = computeKanbanInsertIndex(columnCardIds, draggedId, card.id);
+    onMoveCard(draggedId, columnId, index);
+  };
+
+  const stopCardDragOnControls = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => startKanbanCardDrag(e, card.id, setDragActive)}
+      onDragEnd={() => endKanbanCardDrag(setDragActive)}
+      onDragOver={acceptKanbanCardDrop}
+      onDrop={handleDropOnCard}
+      className="bg-white rounded-xl p-3 border border-nexa-border shadow-sm cursor-grab active:cursor-grabbing touch-manipulation select-none"
+    >
+      <div className="flex items-start gap-2">
+        <div
+          className="shrink-0 mt-0.5 text-gray-300 cursor-grab active:cursor-grabbing"
+          aria-hidden
+          title="جابه‌جایی با ماوس"
+        >
+          <GripVertical size={14} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            role="button"
+            tabIndex={0}
+            draggable={false}
+            onClick={() => onOpenDetail(card)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpenDetail(card);
+              }
+            }}
+            className="text-sm font-bold text-gray-900 text-right w-full cursor-pointer"
+          >
+            {card.title}
+          </div>
+          {card.assignee && (
+            <p className="text-[10px] text-gray-500 mt-1 pointer-events-none">ارجاع: {card.assignee}</p>
+          )}
+          {card.dueDate && (
+            <p className="text-[10px] text-gray-400 mt-0.5 font-fa-num pointer-events-none">
+              سررسید: {card.dueDate}
+              {card.dueTime ? ` — ${card.dueTime}` : ''}
+            </p>
+          )}
+          {card.category && <p className="text-[10px] text-gray-400 pointer-events-none">{card.category}</p>}
+          <div className="flex flex-wrap gap-1 mt-2 pointer-events-none">
+            {card.labelIds.map((lid) => {
+              const lb = labelPalette.find((l) => l.id === lid);
+              return lb ? (
+                <span
+                  key={lid}
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                  style={{ backgroundColor: lb.color }}
+                >
+                  {lb.name}
+                </span>
+              ) : null;
+            })}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 shrink-0">
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={stopCardDragOnControls}
+            title="نشان‌دار"
+            aria-label={card.starred ? 'حذف از نشان‌دار' : 'افزودن به نشان‌دار'}
+            onClick={() => onToggleStar(card.id)}
+            className={card.starred ? 'text-amber-500' : 'text-gray-300'}
+          >
+            <Star size={16} fill={card.starred ? 'currentColor' : 'none'} />
+          </button>
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={stopCardDragOnControls}
+            aria-label="حذف وظیفه"
+            onClick={() => onDeleteCard(card.id)}
+            className="text-gray-300 hover:text-rose-600"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+      {showColumnPicker && (
+        <label
+          className="flex items-center gap-1 mt-2 text-[10px] text-gray-500"
+          onDragStart={stopCardDragOnControls}
+        >
+          <ArrowRightLeft size={12} className="shrink-0 pointer-events-none" />
+          <span className="shrink-0 pointer-events-none">انتقال به</span>
+          <select
+            draggable={false}
+            className="flex-1 min-w-0 bg-gray-50 rounded-lg px-1 py-0.5 text-[10px] font-bold text-gray-700 cursor-pointer"
+            value={card.columnId}
+            onChange={(e) => {
+              const target = e.target.value;
+              if (target && target !== card.columnId) {
+                onMoveCard(card.id, target, 0);
+              }
+            }}
+            aria-label="انتقال کارت به ستون دیگر"
+          >
+            {boardCols.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </div>
+  );
 }
 
 function BoardModal({
@@ -159,6 +355,10 @@ export default function BoardsPanel() {
   }, [columns, activeBoardId]);
 
   const [mobileKanbanCol, setMobileKanbanCol] = useState('');
+  const kanbanDragCardRef = useRef<string | null>(null);
+  const setKanbanDragActive = (id: string | null) => {
+    kanbanDragCardRef.current = id;
+  };
 
   useEffect(() => {
     if (boardCols.length === 0) {
@@ -580,11 +780,15 @@ export default function BoardsPanel() {
             className={`shrink-0 w-[min(100%,18rem)] sm:w-72 nexa-card p-3 bg-gray-50/80 flex flex-col ${
               hiddenOnMobile ? 'max-sm:hidden' : ''
             }`}
-            onDragOver={(e) => e.preventDefault()}
+            onDragEnter={acceptKanbanCardDrop}
+            onDragOver={acceptKanbanCardDrop}
             onDrop={(e) => {
               e.preventDefault();
-              const cardId = e.dataTransfer.getData('text/meizito-card');
-              if (cardId) moveCard(cardId, col.id, colCardIds.length);
+              e.stopPropagation();
+              const cardId = readKanbanDragCardId(e, kanbanDragCardRef.current);
+              if (!cardId) return;
+              const index = computeKanbanInsertIndex(colCardIds, cardId, null);
+              moveCard(cardId, col.id, index);
             }}
           >
             <div className="flex items-center gap-1 mb-3 px-1">
@@ -618,104 +822,56 @@ export default function BoardsPanel() {
                 <Trash2 size={14} />
               </button>
             </div>
-            <div className="space-y-2 flex-1">
+            <div
+              className="space-y-2 flex-1 min-h-[5rem] flex flex-col"
+              onDragEnter={acceptKanbanCardDrop}
+              onDragOver={acceptKanbanCardDrop}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const cardId = readKanbanDragCardId(e, kanbanDragCardRef.current);
+                if (!cardId) return;
+                const index = computeKanbanInsertIndex(colCardIds, cardId, null);
+                moveCard(cardId, col.id, index);
+              }}
+            >
               {colCardIds.map((cid) => {
                 if (!visibleCardIds.has(cid)) return null;
                 const card = cards.find((c) => c.id === cid);
                 if (!card) return null;
                 return (
-                  <div
+                  <KanbanBoardCard
                     key={card.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData('text/meizito-card', card.id);
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    className="bg-white rounded-xl p-3 border border-nexa-border shadow-sm cursor-grab active:cursor-grabbing"
-                  >
-                    <div className="flex items-start gap-2">
-                      <GripVertical size={14} className="text-gray-300 shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => setDetail(card)}
-                          className="text-sm font-bold text-gray-900 text-right w-full"
-                        >
-                          {card.title}
-                        </button>
-                        {card.assignee && (
-                          <p className="text-[10px] text-gray-500 mt-1">ارجاع: {card.assignee}</p>
-                        )}
-                        {card.dueDate && (
-                          <p className="text-[10px] text-gray-400 mt-0.5 font-fa-num">
-                            سررسید: {card.dueDate}
-                            {card.dueTime ? ` — ${card.dueTime}` : ''}
-                          </p>
-                        )}
-                        {card.category && (
-                          <p className="text-[10px] text-gray-400">{card.category}</p>
-                        )}
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {card.labelIds.map((lid) => {
-                            const lb = board?.labelPalette.find((l) => l.id === lid);
-                            return lb ? (
-                              <span
-                                key={lid}
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
-                                style={{ backgroundColor: lb.color }}
-                              >
-                                {lb.name}
-                              </span>
-                            ) : null;
-                          })}
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1 shrink-0">
-                        <button
-                          type="button"
-                          title="نشان‌دار"
-                          aria-label={card.starred ? 'حذف از نشان‌دار' : 'افزودن به نشان‌دار'}
-                          onClick={() => toggleCardStar(card.id)}
-                          className={card.starred ? 'text-amber-500' : 'text-gray-300'}
-                        >
-                          <Star size={16} fill={card.starred ? 'currentColor' : 'none'} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="حذف وظیفه"
-                          onClick={() => handleDeleteCard(card.id)}
-                          className="text-gray-300 hover:text-rose-600"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                    {boardCols.length > 1 && (
-                      <label className="flex items-center gap-1 mt-2 text-[10px] text-gray-500">
-                        <ArrowRightLeft size={12} className="shrink-0" />
-                        <span className="shrink-0">انتقال به</span>
-                        <select
-                          className="flex-1 min-w-0 bg-gray-50 rounded-lg px-1 py-0.5 text-[10px] font-bold text-gray-700"
-                          value={card.columnId}
-                          onChange={(e) => {
-                            const target = e.target.value;
-                            if (target && target !== card.columnId) {
-                              moveCard(card.id, target, 0);
-                            }
-                          }}
-                          aria-label="انتقال کارت به ستون دیگر"
-                        >
-                          {boardCols.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.title}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                  </div>
+                    card={card}
+                    columnId={col.id}
+                    columnCardIds={colCardIds}
+                    boardCols={boardCols}
+                    labelPalette={board?.labelPalette ?? []}
+                    dragFallbackRef={kanbanDragCardRef}
+                    setDragActive={setKanbanDragActive}
+                    onOpenDetail={setDetail}
+                    onToggleStar={toggleCardStar}
+                    onDeleteCard={handleDeleteCard}
+                    onMoveCard={moveCard}
+                  />
                 );
               })}
+              {colCardIds.filter((id) => visibleCardIds.has(id)).length === 0 && (
+                <div
+                  className="flex-1 min-h-[4.5rem] rounded-xl border border-dashed border-gray-200 bg-white/50 flex items-center justify-center text-[10px] text-gray-400 px-2 text-center"
+                  onDragEnter={acceptKanbanCardDrop}
+                  onDragOver={acceptKanbanCardDrop}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const cardId = readKanbanDragCardId(e, kanbanDragCardRef.current);
+                    if (!cardId) return;
+                    moveCard(cardId, col.id, 0);
+                  }}
+                >
+                  رها کردن کارت در این ستون
+                </div>
+              )}
             </div>
           </div>
           );
