@@ -2,7 +2,7 @@
 
 **هدف:** کاهش اسکلتون و تأخیر در جابه‌جایی صفحات — بدون تغییر schema، بدون تغییر چیدمان UI.
 
-**وضعیت:** پیاده‌سازی اولیه انجام شد — `npx tsc --noEmit` سبز.
+**وضعیت:** بسته — prod ناوبری سایدبار تأیید شد؛ `npx tsc --noEmit` سبز.
 
 ---
 
@@ -28,21 +28,15 @@
 - [x] کش per-business با flags (people / catalog / peopleModule)
 - [x] `persistCacheSnapshot` پس از بارگذاری و تغییر state (هم‌خوانی پس از mutate محلی)
 
-## فاز ۳ — Prefetch سایدبار
+## فاز ۳ — ناوبری سایدبار (نهایی prod)
 
-- [x] prefetch روی **کلیک** منو (نه hover/focus — جلوگیری از بار سنگین و باگ اسکرول)
-- [x] `router.prefetch` + workspace prefetch + delegate کاتالوگ
+- [x] `<a href>` + `location.assign` برای ماژول‌ها (full load — پایدار روی Runflare)
+- [x] حذف prefetch کلیک / `sidebar-prefetch.ts`
+- [x] حذف `cacheComponents` / `partialPrefetching` از `next.config.ts`
 
-## Hotfix — اسکرول سایدبار (منو «ناپیدا»)
+## Hotfix — اسکرول سایدبار
 
-- [x] **Clamp** `scrollTop` هنگام restore/save (`nexa-sidebar-scroll-top`)
-- [x] `useLayoutEffect` برای اعمال اسکرول پس از layout
-- [x] حذف `onMouseEnter` / `onFocus` prefetch
-
-## دیباگ کلیک منو (prod/UAT)
-
-- [x] حذف `cacheComponents` / `partialPrefetching` از `next.config.ts` (شکست client nav)
-- [x] سایدبار: `<a href>` بارگذاری کامل صفحه؛ ERP بدون href → `location.assign`
+- [x] clamp `nexa-sidebar-scroll-top` + `useLayoutEffect`
 
 ## فاز ۵ — راستی‌آزمایی
 
@@ -50,24 +44,21 @@
 
 ---
 
-## فایل‌های اصلاح‌شده (خلاصه)
+## فایل‌های کلیدی
 
 | فایل | تغییر |
 |------|--------|
-| `src/context/MeizitoContext.tsx` | gate workspace، پاکسازی کش businessId |
-| `src/context/CatalogContext.tsx` | lazy load، کش، ensure، prefetch delegate |
-| `src/lib/erp/catalog-business-cache.ts` | **جدید** — کش per business |
-| `src/hooks/useCatalogEnsure.ts` | **جدید** |
-| `src/lib/dashboard/sidebar-prefetch.ts` | **جدید** |
-| `src/components/Sidebar.tsx` | prefetch روی کلیک؛ clamp اسکرول sessionStorage |
-| `src/views/Tasks.tsx` | حذف اسکلتون Suspense |
-| `src/views/Sales.tsx`, `Products.tsx`, `People.tsx`, … | `useCatalogEnsure` |
+| `src/components/Sidebar.tsx` | `<a href>`، clamp اسکرول |
+| `next.config.ts` | بدون cacheComponents experiment |
+| `src/context/CatalogContext.tsx` | lazy catalog، بدون delegate prefetch |
+| `src/context/MeizitoContext.tsx` | gate workspace |
+| `src/hooks/useCatalogEnsure.ts` | ensure per view |
 
 ---
 
 ## تست دستی پیشنهادی
 
-1. ورود داشبورد → میز کار: یک اسکلتون (نه دوگانه)؛ برگشت سریع بدون فلش کامل.
-2. بدون باز کردن فروش/کالا: شبکه نباید `GET .../catalog` بلافاصله بزند.
-3. کلیک روی «فروش»: prefetch روی کلیک؛ منوهای پایین بعد از refresh دیده شوند (اسکرول clamp).
-4. عوض کسب‌وکار: دادهٔ ویوی قبلی نشتی ندهد؛ کش ویوی قبلی در همان session بازگشت دهد.
+1. سایدبار: میز کار، HR، CRM، فروش — URL و محتوا درست.
+2. بدون باز کردن ERP: catalog زودهنگام روی داشبورد نزند.
+3. عوض کسب‌وکار: بدون نشتی ویوی قبلی.
+4. اسکرول سایدبار بعد از refresh: منوهای بالا دیده شوند.

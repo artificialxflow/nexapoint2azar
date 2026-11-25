@@ -396,7 +396,7 @@ function isMobileNavActive(
   return true;
 }
 
-export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClose }: SidebarProps) {
+export default function Sidebar({ currentView, onViewChange: _onViewChange, isMobileOpen, onClose }: SidebarProps) {
   const { logout } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();

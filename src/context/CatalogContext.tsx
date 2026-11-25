@@ -43,8 +43,6 @@ import {
   writeCatalogBusinessCache,
   type CatalogLoadFlags,
 } from '@/src/lib/erp/catalog-business-cache';
-import { registerCatalogPrefetchDelegate } from '@/src/lib/dashboard/sidebar-prefetch';
-
 export type CatalogHydrationScope =
   | 'people'
   | 'catalog'
@@ -521,16 +519,6 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     persistCacheSnapshot();
   }, [persistCacheSnapshot]);
-
-  useEffect(() => {
-    registerCatalogPrefetchDelegate((businessId, scope) => {
-      if (businessId !== activeBusinessId) return;
-      void ensureCatalogScope(scope);
-    });
-    return () => {
-      registerCatalogPrefetchDelegate(() => undefined);
-    };
-  }, [activeBusinessId, ensureCatalogScope]);
 
   const flushCatalogModuleSave = useCallback(
     async (patch?: { productCategories?: ProductCategory[]; priceLists?: PriceList[] }): Promise<boolean> => {
