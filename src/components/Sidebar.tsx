@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBusinessOptional } from '@/src/context/BusinessContext';
@@ -61,6 +61,31 @@ interface SidebarProps {
 
 const SIDEBAR_SCROLL_KEY = 'nexa-sidebar-scroll-top';
 const SIDEBAR_GROUPS_KEY = 'nexa-sidebar-groups';
+
+function clampSidebarScrollTop(el: HTMLElement, requested: number): number {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  return Math.min(Math.max(0, requested), max);
+}
+
+function applySavedSidebarScroll(el: HTMLElement | null) {
+  if (!el || typeof window === 'undefined') return;
+  const saved = window.sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+  if (saved == null) {
+    el.scrollTop = 0;
+    return;
+  }
+  const requested = Number(saved);
+  if (!Number.isFinite(requested)) {
+    window.sessionStorage.removeItem(SIDEBAR_SCROLL_KEY);
+    el.scrollTop = 0;
+    return;
+  }
+  const clamped = clampSidebarScrollTop(el, requested);
+  el.scrollTop = clamped;
+  if (clamped !== requested) {
+    window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(clamped));
+  }
+}
 const QUICK_GROUP_ID = 'quick';
 
 type SidebarItemId =
@@ -457,19 +482,19 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
     });
   }, [currentView, persistExpanded]);
 
-  useEffect(() => {
-    const saved = window.sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
-    if (!saved) return;
-    const top = Number(saved) || 0;
-    if (desktopScrollRef.current) desktopScrollRef.current.scrollTop = top;
-    if (mobileScrollRef.current) mobileScrollRef.current.scrollTop = top;
+  useLayoutEffect(() => {
+    applySavedSidebarScroll(desktopScrollRef.current);
+    applySavedSidebarScroll(mobileScrollRef.current);
   }, [currentView, isMobileOpen]);
 
   const handleScrollSave = (ev: React.UIEvent<HTMLElement>) => {
-    window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(ev.currentTarget.scrollTop));
+    const el = ev.currentTarget;
+    const top = clampSidebarScrollTop(el, el.scrollTop);
+    window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
   };
 
   const handleMenuClick = (item: MenuItem) => {
+    handleMenuPrefetch(item);
     if (item.href) {
       router.push(item.href);
     } else {
@@ -497,8 +522,6 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
       <button
         key={item.id}
         type="button"
-        onMouseEnter={() => handleMenuPrefetch(item)}
-        onFocus={() => handleMenuPrefetch(item)}
         onClick={() => handleMenuClick(item)}
         className={cn(
           'w-full flex items-center gap-3 rounded-xl transition-all duration-200 group relative',
