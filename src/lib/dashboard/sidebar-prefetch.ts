@@ -23,6 +23,8 @@ type PrefetchOpts = {
   businessId: string | null;
   view: ViewType | string;
   href?: string;
+  /** پس از navigate — از `router.prefetch` هم‌مسیر پرهیز کن */
+  skipRoutePrefetch?: boolean;
 };
 
 let catalogPrefetchDelegate: ((businessId: string, scope: 'people' | 'catalog' | 'people+catalog' | 'full') => void) | null = null;
@@ -35,7 +37,9 @@ export function registerCatalogPrefetchDelegate(
 
 export function prefetchSidebarTarget(opts: PrefetchOpts) {
   const path = opts.href ?? `/dashboard/${opts.view}`;
-  void opts.router.prefetch(path);
+  if (!opts.skipRoutePrefetch) {
+    void opts.router.prefetch(path);
+  }
 
   if (FRONTEND_ONLY || !opts.businessId) return;
 

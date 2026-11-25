@@ -41,8 +41,9 @@
 
 ## دیباگ کلیک منو (prod/UAT)
 
-- [x] `console.log('[SIDEBAR-CLICK]', item.href)` روی onClick (بدون env)
-- [x] `try/catch` prefetch + navigate؛ سایدبار `z-[60]` و `pointer-events-auto`
+- [x] ناوبری با `next/link` (نه `router.push` قبل از prefetch)
+- [x] prefetch داده پس از کلیک با `skipRoutePrefetch`
+- [x] fallback `location.assign` برای آیتم‌های بدون href
 
 ## فاز ۵ — راستی‌آزمایی
 

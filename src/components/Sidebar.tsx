@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBusinessOptional } from '@/src/context/BusinessContext';
@@ -493,63 +494,89 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
     window.sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(top));
   };
 
-  const handleMenuPrefetch = (item: MenuItem) => {
-    const view = viewForMenuItem(item) ?? (item.id as ViewType);
-    prefetchSidebarTarget({
-      router,
-      queryClient,
-      businessId: business?.activeBusinessId ?? null,
-      view,
-      href: item.href,
-    });
-  };
+  const scheduleDataPrefetch = useCallback(
+    (item: MenuItem) => {
+      window.setTimeout(() => {
+        try {
+          const view = viewForMenuItem(item) ?? (item.id as ViewType);
+          prefetchSidebarTarget({
+            router,
+            queryClient,
+            businessId: business?.activeBusinessId ?? null,
+            view,
+            href: item.href,
+            skipRoutePrefetch: true,
+          });
+        } catch (err) {
+          console.error('[sidebar] prefetch failed', { id: item.id, err });
+        }
+      }, 0);
+    },
+    [router, queryClient, business?.activeBusinessId]
+  );
 
-  const handleMenuClick = (item: MenuItem) => {
+  const handleMenuNavigateNoHref = (item: MenuItem) => {
+    console.log('[SIDEBAR-CLICK]', item.id);
     try {
-      handleMenuPrefetch(item);
-    } catch (err) {
-      console.error('[sidebar] prefetch failed', { id: item.id, err });
-    }
-    try {
-      if (item.href) {
-        router.push(item.href);
-      } else {
-        onViewChange(item.id as ViewType);
-      }
+      onViewChange(item.id as ViewType);
     } catch (err) {
       console.error('[sidebar] navigate failed', { id: item.id, err });
+      window.location.assign(`/dashboard/${item.id}`);
+      return;
     }
     onClose?.();
+    scheduleDataPrefetch(item);
+    window.setTimeout(() => {
+      console.log('[SIDEBAR-AFTER]', window.location.pathname + window.location.search);
+    }, 200);
   };
 
   const showLabels = !isCollapsed || isMobileOpen;
 
   const renderMenuItem = (item: MenuItem, isChild = false) => {
     const active = isMenuItemActive(item);
-    return (
-      <button
-        key={item.id}
-        type="button"
-        onClick={() => {
-          console.log('[SIDEBAR-CLICK]', item.href);
-          handleMenuClick(item);
-        }}
+    const className = cn(
+      'w-full flex items-center gap-3 rounded-xl transition-all duration-200 group relative',
+      isChild ? 'py-2 px-3 text-[11px]' : 'py-2.5 px-3 text-xs',
+      isChild && showLabels ? 'pr-10' : '',
+      active
+        ? 'bg-nexa-accent text-white shadow-lg shadow-nexa-accent/20'
+        : 'hover:bg-white/5 text-white/60 hover:text-white'
+    );
+    const icon = (
+      <item.icon
+        size={isChild ? 18 : 20}
         className={cn(
-          'w-full flex items-center gap-3 rounded-xl transition-all duration-200 group relative',
-          isChild ? 'py-2 px-3 text-[11px]' : 'py-2.5 px-3 text-xs',
-          isChild && showLabels ? 'pr-10' : '',
-          active
-            ? 'bg-nexa-accent text-white shadow-lg shadow-nexa-accent/20'
-            : 'hover:bg-white/5 text-white/60 hover:text-white'
+          'shrink-0 transition-transform duration-200 group-hover:scale-110',
+          active ? 'text-white' : 'text-white/40 group-hover:text-white'
         )}
-      >
-        <item.icon
-          size={isChild ? 18 : 20}
-          className={cn(
-            'shrink-0 transition-transform duration-200 group-hover:scale-110',
-            active ? 'text-white' : 'text-white/40 group-hover:text-white'
-          )}
-        />
+      />
+    );
+
+    if (item.href) {
+      return (
+        <Link
+          key={item.id}
+          href={item.href}
+          onClick={() => {
+            console.log('[SIDEBAR-CLICK]', item.href);
+            onClose?.();
+            scheduleDataPrefetch(item);
+            window.setTimeout(() => {
+              console.log('[SIDEBAR-AFTER]', window.location.pathname + window.location.search);
+            }, 200);
+          }}
+          className={className}
+        >
+          {icon}
+          {showLabels && <span className="font-medium whitespace-nowrap">{item.label}</span>}
+        </Link>
+      );
+    }
+
+    return (
+      <button key={item.id} type="button" onClick={() => handleMenuNavigateNoHref(item)} className={className}>
+        {icon}
         {showLabels && <span className="font-medium whitespace-nowrap">{item.label}</span>}
       </button>
     );
@@ -679,12 +706,11 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
         {mobilePrimaryNav.map((item) => {
           const active = isMobileNavActive(item, pathname, tabParam, currentView);
           return (
-            <button
+            <Link
               key={item.href}
-              type="button"
+              href={item.href}
               onClick={() => {
                 console.log('[SIDEBAR-CLICK]', item.href);
-                router.push(item.href);
                 onClose?.();
               }}
               className={cn(
@@ -695,7 +721,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
             >
               <item.icon size={20} />
               <span className="text-[8px] font-bold truncate w-full text-center">{item.label}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>
