@@ -5,7 +5,8 @@
 | نقش | فایل/ابزار |
 |-----|------------|
 | مغز (استراتژی، فازبندی) | [`MASTER-UAT-SYSTEM.md`](MASTER-UAT-SYSTEM.md) |
-| زمینهٔ پروژه | [`nexapoint-v9.config.md`](nexapoint-v9.config.md) |
+| زمینهٔ پروژه (prod v9) | [`nexapoint-v9.config.md`](nexapoint-v9.config.md) |
+| زمینهٔ پروژه (v11 freeze / dev) | [`nexapoint-v11.config.md`](nexapoint-v11.config.md) |
 | دست‌ها (مرورگر) | GitHub Copilot Agent یا مرورگر دستی |
 | ترمیم کد + `todo-v9.md` | Cursor Agent (بعد از گزارش فاز ۳) |
 
@@ -29,7 +30,7 @@
 
 **UAT r2 (بعد از deploy اصلاحات):** [`prompts/phase3-r2-retest.md`](prompts/phase3-r2-retest.md) · راهنمای دستی [`updates/08/reports/UAT-TEST-GUIDE.md`](../../updates/08/reports/UAT-TEST-GUIDE.md)
 
-هر چت: ابتدا `MASTER-UAT-SYSTEM.md` + `nexapoint-v9.config.md` را attach کنید، سپس متن همان فاز را paste کنید.
+هر چت: ابتدا `MASTER-UAT-SYSTEM.md` + **یکی از** `nexapoint-v9.config.md` (prod) یا `nexapoint-v11.config.md` (dev پس از freeze) را attach کنید، سپس متن همان فاز را paste کنید.
 
 ## ورود
 
