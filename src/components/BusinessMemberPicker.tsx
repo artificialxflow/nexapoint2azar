@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import EntityAvatar from '@/src/components/media/EntityAvatar';
 import { useMeizito } from '@/src/context/MeizitoContext';
@@ -28,6 +28,7 @@ export default function BusinessMemberPicker({
   const members = useMemo(() => listTeamDirectory('all'), [listTeamDirectory]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const query = allowFreeText ? value : open ? draft : value;
 
@@ -44,15 +45,26 @@ export default function BusinessMemberPicker({
     ).slice(0, 16);
   }, [members, query]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
   const pick = (name: string, id: string) => {
     onChange(name, id);
     setDraft('');
     setOpen(false);
   };
 
+  const showList = open && filtered.length > 0;
+
   return (
-    <div className={`relative ${className}`}>
-      <div className="relative">
+    <div ref={rootRef} className={`relative isolate ${className}`}>
+      <div className="relative z-0">
         <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
         <input
           type="text"
@@ -70,22 +82,26 @@ export default function BusinessMemberPicker({
             if (!allowFreeText) setDraft(value);
             setOpen(true);
           }}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onBlur={() => {
+            window.setTimeout(() => setOpen(false), 120);
+          }}
           placeholder={placeholder}
           className="w-full bg-gray-50 rounded-xl px-3 py-2 pr-9 text-sm"
         />
       </div>
       {userId && (
-        <p className="text-[10px] text-gray-400 mt-1 font-fa-num">شناسه: {userId.slice(0, 8)}…</p>
+        <p className="text-[10px] text-gray-400 mt-1 font-fa-num">شناسه عضو تیم ثبت شد</p>
       )}
-      {open && filtered.length > 0 && (
-        <ul className="absolute z-30 top-full mt-1 w-full bg-white border border-nexa-border rounded-xl shadow-lg max-h-48 overflow-y-auto">
+      {showList && (
+        <ul
+          className="absolute z-20 top-full mt-1 w-full bg-white border border-nexa-border rounded-xl shadow-lg max-h-40 overflow-y-auto overscroll-contain"
+          onMouseDown={(e) => e.preventDefault()}
+        >
           {filtered.map((m) => (
             <li key={m.id}>
               <button
                 type="button"
                 className="w-full flex items-center gap-2 text-right px-3 py-2 text-xs hover:bg-gray-50"
-                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(m.name, m.id)}
               >
                 <EntityAvatar
@@ -106,6 +122,7 @@ export default function BusinessMemberPicker({
           ))}
         </ul>
       )}
+      {showList && <div className="h-2 shrink-0" aria-hidden />}
     </div>
   );
 }

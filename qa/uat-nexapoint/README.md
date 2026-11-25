@@ -30,6 +30,8 @@
 
 **UAT r2 (بعد از deploy اصلاحات):** [`prompts/phase3-r2-retest.md`](prompts/phase3-r2-retest.md) · راهنمای دستی [`updates/08/reports/UAT-TEST-GUIDE.md`](../../updates/08/reports/UAT-TEST-GUIDE.md)
 
+**v11 regression + UX prod (پس از fix چهار باگ):** [`prompts/uat-v11-retest-and-ux.md`](prompts/uat-v11-retest-and-ux.md) — attach `MASTER` + `nexapoint-v11.config.md`؛ خروجی [`reports/retest-v11-ux-report.md`](reports/retest-v11-ux-report.md)
+
 هر چت: ابتدا `MASTER-UAT-SYSTEM.md` + **یکی از** `nexapoint-v9.config.md` (prod) یا `nexapoint-v11.config.md` (dev پس از freeze) را attach کنید، سپس متن همان فاز را paste کنید.
 
 ## ورود

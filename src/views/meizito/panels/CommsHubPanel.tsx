@@ -1,14 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import {
-  BarChart3,
-  Calendar,
-  ClipboardList,
-  Mail,
-  MessageSquare,
-  Phone,
-} from 'lucide-react';
+import { BarChart3, Calendar, ClipboardList, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { useMeizito } from '@/src/context/MeizitoContext';
 import type { MeizitoTabId } from '@/src/types/meizito';
@@ -43,34 +36,16 @@ export default function CommsHubPanel({ onGoTab }: Props) {
 
   const shortcuts = [
     {
-      label: 'گفتگوها',
-      href: '/dashboard/chats',
-      icon: MessageSquare,
-      badge: 0,
-    },
-    {
-      label: 'نامه‌ها',
-      action: () => onGoTab('letters'),
-      icon: Mail,
-      badge: openLetters,
-    },
-    {
-      label: 'درخواست‌ها',
+      label: 'درخواست‌های اداری',
       href: '/dashboard/work-requests',
       icon: ClipboardList,
       badge: pendingRequests,
     },
     {
-      label: 'گزارش بازدید',
+      label: 'گزارش بازدید میدانی',
       action: () => onGoTab('reports'),
       icon: BarChart3,
       badge: 0,
-    },
-    {
-      label: 'تقویم کامل',
-      action: () => onGoTab('calendar'),
-      icon: Calendar,
-      badge: todayEvents.length,
     },
   ];
 
@@ -79,15 +54,38 @@ export default function CommsHubPanel({ onGoTab }: Props) {
       <div>
         <h2 className="text-lg font-black text-gray-900">میانبرهای ارتباطات</h2>
         <p className="text-xs text-gray-500 mt-1">
-          دسترسی سریع — مقصد اصلی همان منوی کناری است (نه صفحهٔ جداگانه). «تقویم کامل» = تب تقویم در{' '}
+          گفتگو، نامه، تقویم و دفتر تلفن از <strong className="text-gray-700">منوی کناری</strong>{' '}
+          در دسترس‌اند. این صفحه فقط میانبرهای تکمیلی و دفتر تلفن یک‌جا را نشان می‌دهد.
+        </p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <Link
+            href="/dashboard/chats"
+            className="text-[10px] font-bold text-nexa-accent hover:underline"
+          >
+            گفتگوها
+          </Link>
           <button
             type="button"
-            className="text-nexa-accent font-bold hover:underline"
+            className="text-[10px] font-bold text-nexa-accent hover:underline"
+            onClick={() => onGoTab('letters')}
+          >
+            نامه‌ها
+          </button>
+          <button
+            type="button"
+            className="text-[10px] font-bold text-nexa-accent hover:underline"
             onClick={() => onGoTab('calendar')}
           >
-            /dashboard/tasks?tab=calendar
+            تقویم
           </button>
-        </p>
+          <button
+            type="button"
+            className="text-[10px] font-bold text-nexa-accent hover:underline"
+            onClick={() => onGoTab('phone')}
+          >
+            دفتر تلفن (تب)
+          </button>
+        </div>
       </div>
 
       {(pending.letters > 0 || pending.requests > 0) && (

@@ -14,6 +14,7 @@ import {
   Settings,
   ChevronUp,
   ChevronDown,
+  ArrowRightLeft,
 } from 'lucide-react';
 import BusinessMemberPicker from '@/src/components/BusinessMemberPicker';
 import { isPickableBusinessCalendar } from '@/src/types/meizito';
@@ -156,6 +157,18 @@ export default function BoardsPanel() {
       .filter((c) => c.boardId === activeBoardId)
       .sort((a, b) => a.order - b.order);
   }, [columns, activeBoardId]);
+
+  const [mobileKanbanCol, setMobileKanbanCol] = useState('');
+
+  useEffect(() => {
+    if (boardCols.length === 0) {
+      setMobileKanbanCol('');
+      return;
+    }
+    setMobileKanbanCol((prev) =>
+      prev && boardCols.some((c) => c.id === prev) ? prev : boardCols[0].id
+    );
+  }, [boardCols, activeBoardId]);
 
   const pickableCalendars = useMemo(
     () => calendars.filter(isPickableBusinessCalendar),
@@ -434,7 +447,7 @@ export default function BoardsPanel() {
         </button>
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="relative z-10 mb-4 flex flex-col gap-3 bg-white/80 dark:bg-transparent pb-2">
         <div className="flex flex-wrap gap-2 items-center justify-between">
           <div className="flex flex-wrap gap-2 items-center">
             <button
@@ -527,18 +540,46 @@ export default function BoardsPanel() {
       </div>
 
       {hasActiveFilter && visibleCardIds.size === 0 && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3">
+        <p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-4 py-3 relative z-10">
           کارتی با این فیلتر پیدا نشد.
         </p>
       )}
 
-      <div className="min-w-0 -mx-2 px-2 flex flex-nowrap gap-4 meizito-kanban-scroll pb-3 min-h-[420px]">
+      {boardCols.length > 0 && (
+        <div
+          className="sm:hidden relative z-0 flex gap-1 overflow-x-auto pb-2 mb-1"
+          role="tablist"
+          aria-label="ستون‌های کانبان"
+        >
+          {boardCols.map((col) => (
+            <button
+              key={col.id}
+              type="button"
+              role="tab"
+              aria-selected={mobileKanbanCol === col.id}
+              onClick={() => setMobileKanbanCol(col.id)}
+              className={`shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap ${
+                mobileKanbanCol === col.id
+                  ? 'bg-nexa-accent text-white'
+                  : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {col.title}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="relative z-0 isolate min-w-0 -mx-2 px-2 flex flex-nowrap gap-4 meizito-kanban-scroll pb-3 min-h-[320px] sm:min-h-[420px] overflow-x-auto">
         {boardCols.map((col) => {
           const colCardIds = col.cardIds ?? [];
+          const hiddenOnMobile = mobileKanbanCol && col.id !== mobileKanbanCol;
           return (
           <div
             key={col.id}
-            className="shrink-0 w-72 nexa-card p-3 bg-gray-50/80 flex flex-col"
+            className={`shrink-0 w-[min(100%,18rem)] sm:w-72 nexa-card p-3 bg-gray-50/80 flex flex-col ${
+              hiddenOnMobile ? 'max-sm:hidden' : ''
+            }`}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
@@ -649,6 +690,29 @@ export default function BoardsPanel() {
                         </button>
                       </div>
                     </div>
+                    {boardCols.length > 1 && (
+                      <label className="flex items-center gap-1 mt-2 text-[10px] text-gray-500">
+                        <ArrowRightLeft size={12} className="shrink-0" />
+                        <span className="shrink-0">انتقال به</span>
+                        <select
+                          className="flex-1 min-w-0 bg-gray-50 rounded-lg px-1 py-0.5 text-[10px] font-bold text-gray-700"
+                          value={card.columnId}
+                          onChange={(e) => {
+                            const target = e.target.value;
+                            if (target && target !== card.columnId) {
+                              moveCard(card.id, target, 0);
+                            }
+                          }}
+                          aria-label="انتقال کارت به ستون دیگر"
+                        >
+                          {boardCols.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
                 );
               })}

@@ -67,7 +67,8 @@ type SidebarItemId =
   | 'sidebar-phone'
   | 'sidebar-notes'
   | 'sidebar-projects'
-  | 'sidebar-daily-report';
+  | 'sidebar-daily-report'
+  | 'sidebar-hr';
 
 type MenuItem = {
   id: SidebarItemId;
@@ -109,7 +110,15 @@ const menuGroups: MenuGroup[] = [
         icon: CheckSquare,
         href: '/dashboard/tasks',
         matchView: 'tasks',
-        matchTasksHome: true,
+        matchPath: '/dashboard/tasks',
+      },
+      {
+        id: 'sidebar-hr',
+        label: 'منابع انسانی (HR)',
+        icon: UserCircle,
+        href: '/dashboard/hr',
+        matchView: 'hr',
+        matchPath: '/dashboard/hr',
       },
       {
         id: 'sidebar-calendar',
@@ -263,7 +272,8 @@ function viewForMenuItem(item: MenuItem): ViewType | null {
     id === 'sidebar-phone' ||
     id === 'sidebar-notes' ||
     id === 'sidebar-projects' ||
-    id === 'sidebar-daily-report'
+    id === 'sidebar-daily-report' ||
+    id === 'sidebar-hr'
   ) {
     return null;
   }
@@ -377,6 +387,12 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
       if (item.matchTab) {
         const path = item.matchPath ?? item.href?.split('?')[0] ?? '/dashboard/tasks';
         return pathname === path && tabParam === item.matchTab;
+      }
+      if (item.id === 'tasks' && item.matchView === 'tasks') {
+        return pathname === '/dashboard/tasks' && currentView === 'tasks';
+      }
+      if (item.matchPath && item.matchView) {
+        return pathname === item.matchPath && currentView === item.matchView;
       }
       if (item.matchTasksHome) {
         return pathname === '/dashboard/tasks' && currentView === 'tasks' && !tabParam;

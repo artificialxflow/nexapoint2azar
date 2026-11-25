@@ -43,8 +43,8 @@ export default function HrRequestsPanel({
   return (
     <div className="space-y-4" data-testid="hr-requests-panel">
       <p className="text-[10px] text-gray-500 leading-relaxed">
-        هنگام ثبت درخواست جدید، سرویس eligibility بررسی می‌شود و پیش‌نمایش نتیجه زیر فرم «ثبت
-        درخواست» نمایش داده می‌شود.
+        هنگام ثبت درخواست جدید، شرایط احراز (سابقه، نقش و قوانین سازمان) بررسی می‌شود و
+        پیش‌نمایش نتیجه زیر فرم «ثبت درخواست» نمایش داده می‌شود.
       </p>
       <div className="flex flex-wrap gap-1">
         {(

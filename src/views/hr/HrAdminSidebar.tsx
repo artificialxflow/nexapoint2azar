@@ -124,7 +124,7 @@ export default function HrAdminSidebar({
       <div className="nexa-card p-6 border border-indigo-100">
         <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
           <ShieldCheck size={16} className="text-indigo-600" />
-          قوانین eligibility HR
+          قوانین واجد شرایط بودن درخواست‌های HR
         </h4>
         {rules.length === 0 ? (
           <p className="text-[10px] text-gray-500 mb-3">هنوز قانونی ثبت نشده.</p>

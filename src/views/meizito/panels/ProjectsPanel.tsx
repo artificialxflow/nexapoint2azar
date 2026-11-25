@@ -178,7 +178,7 @@ export default function ProjectsPanel() {
         </button>
       </div>
 
-      <div className="nexa-card p-5 space-y-4">
+      <div className="nexa-card p-5 space-y-4 isolate relative">
         <p className="text-sm font-black flex items-center gap-2">
           <Plus size={16} />
           پروژه جدید
@@ -210,7 +210,7 @@ export default function ProjectsPanel() {
           </select>
         </div>
 
-        <div>
+        <div className="relative z-0 overflow-visible">
           <p className="text-xs font-bold text-gray-600 mb-2">اعضای پروژه</p>
           {selectedIds.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3" dir="rtl">
@@ -244,7 +244,7 @@ export default function ProjectsPanel() {
           </div>
 
           <p className="text-[10px] font-bold text-gray-500 mb-1">اعضای کسب‌وکار</p>
-          <div className="max-h-48 overflow-y-auto border border-nexa-border rounded-xl divide-y divide-gray-100 mb-3">
+          <div className="max-h-40 overflow-y-auto overscroll-contain border border-nexa-border rounded-xl divide-y divide-gray-100">
             {filteredTeam.length === 0 ? (
               <p className="text-xs text-gray-400 p-3 text-center">عضو تیمی یافت نشد.</p>
             ) : (
@@ -271,12 +271,12 @@ export default function ProjectsPanel() {
           </div>
         </div>
 
-        {formError && <p className="text-xs text-rose-600 font-bold">{formError}</p>}
+        {formError && <p className="text-xs text-rose-600 font-bold mt-3">{formError}</p>}
 
         <button
           type="button"
           onClick={submitProject}
-          className="nexa-btn-primary w-full flex items-center justify-center gap-2 py-2 text-sm font-bold disabled:opacity-50"
+          className="nexa-btn-primary relative z-10 w-full flex items-center justify-center gap-2 py-2 text-sm font-bold disabled:opacity-50 mt-4 shrink-0"
         >
           <Plus size={16} />
           ثبت پروژه
