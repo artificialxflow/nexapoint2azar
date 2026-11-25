@@ -41,8 +41,8 @@
 
 ## دیباگ کلیک منو (prod/UAT)
 
-- [x] `NEXT_PUBLIC_DEBUG_SIDEBAR=true` → لاگ `[sidebar]` در Console
-- [x] `try/catch` روی prefetch و navigate؛ خطای prefetch با `console.error` (همیشه)
+- [x] `console.log('[SIDEBAR-CLICK]', item.href)` روی onClick (بدون env)
+- [x] `try/catch` prefetch + navigate؛ سایدبار `z-[60]` و `pointer-events-auto`
 
 ## فاز ۵ — راستی‌آزمایی
 

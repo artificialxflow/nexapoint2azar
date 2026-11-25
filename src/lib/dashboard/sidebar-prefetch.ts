@@ -33,13 +33,8 @@ export function registerCatalogPrefetchDelegate(
   catalogPrefetchDelegate = fn;
 }
 
-const DEBUG_SIDEBAR = process.env.NEXT_PUBLIC_DEBUG_SIDEBAR === 'true';
-
 export function prefetchSidebarTarget(opts: PrefetchOpts) {
   const path = opts.href ?? `/dashboard/${opts.view}`;
-  if (DEBUG_SIDEBAR) {
-    console.info('[sidebar]', 'prefetch:start', { view: opts.view, path, businessId: opts.businessId });
-  }
   void opts.router.prefetch(path);
 
   if (FRONTEND_ONLY || !opts.businessId) return;

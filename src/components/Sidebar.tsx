@@ -61,11 +61,6 @@ interface SidebarProps {
 
 const SIDEBAR_SCROLL_KEY = 'nexa-sidebar-scroll-top';
 const SIDEBAR_GROUPS_KEY = 'nexa-sidebar-groups';
-const DEBUG_SIDEBAR = process.env.NEXT_PUBLIC_DEBUG_SIDEBAR === 'true';
-
-function sideLog(...args: unknown[]) {
-  if (DEBUG_SIDEBAR) console.info('[sidebar]', ...args);
-}
 
 function clampSidebarScrollTop(el: HTMLElement, requested: number): number {
   const max = Math.max(0, el.scrollHeight - el.clientHeight);
@@ -453,7 +448,6 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
   }, []);
 
   const toggleGroup = (groupId: string) => {
-    sideLog('toggleGroup', groupId);
     setExpandedGroups((prev) => {
       const wasOpen = prev[groupId] ?? menuGroups.find((g) => g.id === groupId)?.defaultExpanded ?? false;
       const next: Record<string, boolean> = { ...prev };
@@ -464,7 +458,6 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
           if (g.collapsible) next[g.id] = g.id === groupId;
         }
       }
-      sideLog('toggleGroup:state', { groupId, wasOpen, next });
       persistExpanded(next);
       return next;
     });
@@ -512,19 +505,15 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
   };
 
   const handleMenuClick = (item: MenuItem) => {
-    sideLog('click', { id: item.id, label: item.label, href: item.href ?? null });
     try {
       handleMenuPrefetch(item);
-      sideLog('prefetch:ok', item.id);
     } catch (err) {
       console.error('[sidebar] prefetch failed', { id: item.id, err });
     }
     try {
       if (item.href) {
-        sideLog('navigate:href', item.href);
         router.push(item.href);
       } else {
-        sideLog('navigate:view', item.id);
         onViewChange(item.id as ViewType);
       }
     } catch (err) {
@@ -541,7 +530,10 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
       <button
         key={item.id}
         type="button"
-        onClick={() => handleMenuClick(item)}
+        onClick={() => {
+          console.log('[SIDEBAR-CLICK]', item.href);
+          handleMenuClick(item);
+        }}
         className={cn(
           'w-full flex items-center gap-3 rounded-xl transition-all duration-200 group relative',
           isChild ? 'py-2 px-3 text-[11px]' : 'py-2.5 px-3 text-xs',
@@ -631,7 +623,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
           else desktopScrollRef.current = el;
         }}
         onScroll={handleScrollSave}
-        className="flex-1 py-4 px-3 space-y-4 overflow-y-auto custom-scrollbar"
+        className="relative z-10 flex-1 py-4 px-3 space-y-4 overflow-y-auto custom-scrollbar pointer-events-auto"
       >
         {menuGroups.map((group) => renderGroup(group))}
       </nav>
@@ -676,7 +668,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
 
       <aside
         className={cn(
-          'fixed top-0 right-0 h-full bg-nexa-primary text-white transition-all duration-300 z-50 hidden md:flex flex-col border-l border-white/5',
+          'fixed top-0 right-0 h-full bg-nexa-primary text-white transition-all duration-300 z-[60] hidden md:flex flex-col border-l border-white/5 pointer-events-auto',
           'w-72'
         )}
       >
@@ -691,7 +683,7 @@ export default function Sidebar({ currentView, onViewChange, isMobileOpen, onClo
               key={item.href}
               type="button"
               onClick={() => {
-                sideLog('click:mobile', item.href);
+                console.log('[SIDEBAR-CLICK]', item.href);
                 router.push(item.href);
                 onClose?.();
               }}
