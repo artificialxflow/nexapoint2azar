@@ -10,6 +10,9 @@ type OrgUnitRow = {
   name: string;
   parentId: string | null;
   sortOrder: number;
+  phone?: string;
+  email?: string;
+  location?: string;
 };
 
 type Props = {
@@ -138,6 +141,11 @@ function OrgTreeNode({ unit, depth, units, canManage, onPatchParent }: OrgTreeNo
       )}
       <Building2 className="text-indigo-500 shrink-0" size={16} />
       <span className="text-sm font-black text-gray-900 flex-1 min-w-[6rem]">{unit.name}</span>
+      {(unit.phone || unit.email || unit.location) && (
+        <p className="w-full text-[9px] text-gray-500 font-fa-num">
+          {[unit.phone, unit.email, unit.location].filter(Boolean).join(' · ')}
+        </p>
+      )}
       {canManage && (
         <select
           value={unit.parentId ?? ''}
@@ -189,6 +197,9 @@ export default function HrOrgUnitsPanel({
   const [loading, setLoading] = useState(false);
   const [newName, setNewName] = useState('');
   const [newParentId, setNewParentId] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newLocation, setNewLocation] = useState('');
   const [unitDraft, setUnitDraft] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState('');
 
@@ -224,6 +235,9 @@ export default function HrOrgUnitsPanel({
       body: JSON.stringify({
         name: newName.trim(),
         parentId: newParentId || null,
+        phone: newPhone.trim() || undefined,
+        email: newEmail.trim() || undefined,
+        location: newLocation.trim() || undefined,
       }),
     });
     if (!res.ok) {
@@ -232,6 +246,9 @@ export default function HrOrgUnitsPanel({
     }
     setNewName('');
     setNewParentId('');
+    setNewPhone('');
+    setNewEmail('');
+    setNewLocation('');
     await reload();
   };
 
@@ -339,6 +356,24 @@ export default function HrOrgUnitsPanel({
             <Plus size={14} />
             واحد
           </button>
+          <input
+            value={newPhone}
+            onChange={(e) => setNewPhone(e.target.value)}
+            placeholder="تلفن واحد (اختیاری)"
+            className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num min-w-[8rem]"
+          />
+          <input
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            placeholder="ایمیل (اختیاری)"
+            className="bg-gray-50 rounded-xl px-3 py-2 text-xs min-w-[8rem]"
+          />
+          <input
+            value={newLocation}
+            onChange={(e) => setNewLocation(e.target.value)}
+            placeholder="موقعیت / مکان (اختیاری)"
+            className="bg-gray-50 rounded-xl px-3 py-2 text-xs min-w-[8rem]"
+          />
         </div>
       )}
 

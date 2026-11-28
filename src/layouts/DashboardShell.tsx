@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CatalogProvider } from '@/src/context/CatalogContext';
 import { SettingsProvider } from '@/src/context/SettingsContext';
 import BusinessGate from '@/src/components/BusinessGate';
+import { InAppNotificationProvider } from '@/src/context/InAppNotificationContext';
 
 interface DashboardShellProps {
   currentView: ViewType;
@@ -25,6 +26,7 @@ export default function DashboardShell({
   return (
     <CatalogProvider>
     <SettingsProvider>
+    <InAppNotificationProvider>
     <BusinessGate>
     <div className="h-screen min-h-screen bg-nexa-bg flex overflow-hidden">
       <Sidebar
@@ -62,6 +64,7 @@ export default function DashboardShell({
       </main>
     </div>
     </BusinessGate>
+    </InAppNotificationProvider>
     </SettingsProvider>
     </CatalogProvider>
   );

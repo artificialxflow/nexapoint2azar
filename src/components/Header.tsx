@@ -21,6 +21,7 @@ import { useBusiness } from '@/src/context/BusinessContext';
 import { useAuth } from '@/src/context/AuthContext';
 import { patchAuthAvatar } from '@/src/lib/auth/profile-client';
 import { NEXA_BUSINESS_ROLE_LABELS } from '@/src/types/business';
+import { useInAppNotifications } from '@/src/context/InAppNotificationContext';
 
 interface HeaderProps {
   onMenuOpen: () => void;
@@ -34,12 +35,16 @@ export default function Header({ onMenuOpen }: HeaderProps) {
   const [profileOpen, setProfileOpen] = useState(false);
   const bizRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const { items: notifItems, unreadCount, markAllRead, markRead } = useInAppNotifications();
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       const t = e.target as Node;
       if (bizRef.current && !bizRef.current.contains(t)) setBizOpen(false);
       if (profileRef.current && !profileRef.current.contains(t)) setProfileOpen(false);
+      if (notifRef.current && !notifRef.current.contains(t)) setNotifOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -142,14 +147,49 @@ export default function Header({ onMenuOpen }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-4">
-        <button
-          type="button"
-          className="p-2.5 text-gray-500 hover:bg-gray-50 rounded-xl relative transition-colors"
-          aria-label="اعلان‌ها"
-        >
-          <Bell size={20} />
-          <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-        </button>
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setProfileOpen(false);
+              setBizOpen(false);
+              setNotifOpen((o) => !o);
+              if (!notifOpen && unreadCount > 0) markAllRead();
+            }}
+            className="p-2.5 text-gray-500 hover:bg-gray-50 rounded-xl relative transition-colors"
+            aria-label="اعلان‌ها"
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full border-2 border-white flex items-center justify-center font-fa-num">
+                {unreadCount > 9 ? '۹+' : unreadCount}
+              </span>
+            )}
+          </button>
+          {notifOpen && (
+            <div className="absolute left-0 mt-2 w-72 max-h-80 overflow-y-auto bg-white border border-nexa-border rounded-2xl shadow-xl z-50 p-2 space-y-1">
+              {notifItems.length === 0 ? (
+                <p className="text-xs text-gray-500 p-3 text-center">اعلان جدیدی نیست.</p>
+              ) : (
+                notifItems.slice(0, 12).map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => {
+                      markRead(n.id);
+                      setNotifOpen(false);
+                      if (n.href) router.push(n.href);
+                    }}
+                    className={`w-full text-right p-2 rounded-xl hover:bg-gray-50 ${n.read ? 'opacity-70' : ''}`}
+                  >
+                    <p className="text-xs font-bold text-gray-900">{n.title}</p>
+                    {n.body && <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="h-10 w-[1px] bg-gray-100 mx-1 md:mx-2"></div>
 

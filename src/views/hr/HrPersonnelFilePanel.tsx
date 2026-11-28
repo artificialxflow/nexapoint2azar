@@ -290,13 +290,24 @@ function PersonnelDocRow({
         <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600">{statusFa}</span>
       </div>
       {record?.attachment && (
-        <button
-          type="button"
-          onClick={onOpen}
-          className="text-[10px] font-bold text-nexa-accent hover:underline truncate max-w-full text-start"
-        >
-          {record.attachment.name}
-        </button>
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="text-[10px] font-bold text-nexa-accent hover:underline truncate max-w-full text-start"
+          >
+            {record.attachment.name} — مشاهده / دانلود
+          </button>
+          {record.attachment.url &&
+            (record.attachment.mimeType?.startsWith('image/') ||
+              /\.(png|jpe?g|webp|gif)$/i.test(record.attachment.name)) && (
+              <img
+                src={record.attachment.url}
+                alt={record.attachment.name}
+                className="max-h-24 rounded-lg border border-nexa-border object-contain"
+              />
+            )}
+        </div>
       )}
       {record?.reviewNote && status === 'rejected' && (
         <p className="text-[10px] text-rose-700">{record.reviewNote}</p>
@@ -344,12 +355,6 @@ function PersonnelDocRow({
               رد
             </button>
           </>
-        )}
-        {!readOnly && !record?.attachment && (
-          <label className="text-[10px] text-gray-500 flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={legacyChecked} onChange={onLegacyToggle} />
-            تیک بدون فایل (موقت)
-          </label>
         )}
       </div>
     </li>

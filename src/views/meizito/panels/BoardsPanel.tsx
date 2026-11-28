@@ -20,7 +20,7 @@ import BusinessMemberPicker from '@/src/components/BusinessMemberPicker';
 import { isPickableBusinessCalendar } from '@/src/types/meizito';
 import { AttachmentPickerModal } from '@/src/components/attachments/AttachmentPickerModal';
 import { attachmentScopeForMeizitoCard } from '@/src/lib/attachments/scopes';
-import { openLocalAttachment } from '@/src/lib/attachments/client';
+import { openLocalAttachment, uploadAttachment } from '@/src/lib/attachments/client';
 import { useMeizito } from '@/src/context/MeizitoContext';
 import { formatDateKeyJalaliHint, toDateKey } from '@/src/lib/meizito/calendarGrid';
 import JalaliDateInput from '@/src/views/meizito/components/JalaliDateInput';
@@ -388,6 +388,11 @@ export default function BoardsPanel() {
 
   const board = boards.find((b) => b.id === activeBoardId);
 
+  const boardMemberNames = useMemo(
+    () => (board?.memberNames ?? []).filter(Boolean),
+    [board?.memberNames]
+  );
+
   useEffect(() => {
     setBoardNameDraft(board?.name ?? '');
   }, [board?.id, board?.name]);
@@ -556,17 +561,6 @@ export default function BoardsPanel() {
       ? detail.labelIds.filter((id) => id !== labelId)
       : [...detail.labelIds, labelId];
     updateCard(detail.id, { labelIds });
-  };
-
-  const addPlainFileAttachment = (file: File) => {
-    if (!detail) return;
-    const sizeKb = Math.max(1, Math.round(file.size / 1024));
-    updateCard(detail.id, {
-      attachments: [
-        ...detail.attachments,
-        { id: newLocalId(), name: file.name, size: `${sizeKb} KB` },
-      ],
-    });
   };
 
   const addFileAttachment = (ref: AttachmentRef) => {
@@ -985,7 +979,8 @@ export default function BoardsPanel() {
             <BusinessMemberPicker
               value={newTaskAssignee}
               onChange={(name) => setNewTaskAssignee(name)}
-              placeholder="انتخاب از تیم سازمان"
+              placeholder="انتخاب از اعضای میز"
+              restrictToMemberNames={boardMemberNames.length > 0 ? boardMemberNames : undefined}
             />
           </div>
           <input
@@ -1513,7 +1508,8 @@ export default function BoardsPanel() {
                       assigneeUserId: uid ?? resolveAssigneeUserId(a),
                     });
                   }}
-                  placeholder="انتخاب از تیم سازمان"
+                  placeholder="انتخاب از اعضای میز"
+                  restrictToMemberNames={boardMemberNames.length > 0 ? boardMemberNames : undefined}
                   className="mt-1"
                 />
               </div>
@@ -1632,22 +1628,42 @@ export default function BoardsPanel() {
               <div>
                 <label className="text-xs font-bold text-gray-500">پیوست‌ها</label>
                 {detail.attachments.length > 0 && (
-                  <ul className="mt-2 space-y-1">
+                  <ul className="mt-2 space-y-2">
                     {detail.attachments.map((att) => (
-                      <li key={att.id} className="text-xs text-gray-600 flex items-center gap-2 flex-wrap">
+                      <li key={att.id} className="text-xs text-gray-600 flex flex-col gap-1">
+                        <div className="flex items-center gap-2 flex-wrap">
                         <Paperclip size={12} />
                         {att.fileRef ? (
-                          <button
-                            type="button"
-                            className="text-nexa-accent font-bold hover:underline"
-                            onClick={() => openLocalAttachment(att.fileRef!)}
-                          >
-                            {att.name}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="text-nexa-accent font-bold hover:underline"
+                              onClick={() => void openLocalAttachment(att.fileRef!)}
+                            >
+                              {att.name}
+                            </button>
+                            <button
+                              type="button"
+                              className="text-[10px] font-bold text-gray-500 hover:text-nexa-accent"
+                              onClick={() => void openLocalAttachment(att.fileRef!)}
+                            >
+                              دانلود / مشاهده
+                            </button>
+                          </>
                         ) : (
                           <span>{att.name}</span>
                         )}
                         <span className="text-gray-400 font-fa-num">({att.size})</span>
+                        </div>
+                        {att.fileRef?.url &&
+                          (att.fileRef.mimeType?.startsWith('image/') ||
+                            /\.(png|jpe?g|webp|gif)$/i.test(att.name)) && (
+                            <img
+                              src={att.fileRef.url}
+                              alt={att.name}
+                              className="max-h-28 rounded-lg border border-nexa-border object-contain w-fit"
+                            />
+                          )}
                         <button
                           type="button"
                           aria-label="حذف پیوست"
@@ -1673,8 +1689,21 @@ export default function BoardsPanel() {
                       className="hidden"
                       onChange={(e) => {
                         const f = e.target.files?.[0];
-                        if (f) addPlainFileAttachment(f);
                         e.target.value = '';
+                        if (!f || !detail || !activeBusinessId) return;
+                        void (async () => {
+                          const scope = attachmentScopeForMeizitoCard(
+                            activeBusinessId,
+                            detail.boardId,
+                            detail.id
+                          );
+                          const ref = await uploadAttachment(f, scope, {
+                            businessId: activeBusinessId,
+                            entityType: 'workspace_card',
+                            entityId: detail.id,
+                          });
+                          addFileAttachment(ref);
+                        })();
                       }}
                     />
                   </label>

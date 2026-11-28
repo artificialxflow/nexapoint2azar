@@ -50,6 +50,8 @@ const tabs = [
 
 const HR_TAB_IDS = new Set(tabs.map((t) => t.id));
 
+const HR_STAFF_TAB_IDS = new Set(['files', 'requests', 'performance', 'training']);
+
 export default function HR() {
   const { activeBusinessId, activeBusiness } = useBusiness();
   const canManage = activeBusiness?.role === 'owner' || activeBusiness?.role === 'admin';
@@ -74,10 +76,23 @@ export default function HR() {
   });
   const [opsError, setOpsError] = useState<string | null>(null);
 
+  const visibleTabs = useMemo(
+    () => (canManage ? tabs : tabs.filter((t) => HR_STAFF_TAB_IDS.has(t.id))),
+    [canManage]
+  );
+
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && HR_TAB_IDS.has(tab)) setActiveTab(tab);
-  }, [searchParams]);
+    if (tab && HR_TAB_IDS.has(tab)) {
+      if (canManage || HR_STAFF_TAB_IDS.has(tab)) {
+        setActiveTab(tab);
+      } else {
+        setActiveTab('files');
+      }
+    } else if (!canManage) {
+      setActiveTab((prev) => (HR_STAFF_TAB_IDS.has(prev) ? prev : 'files'));
+    }
+  }, [searchParams, canManage]);
 
   const loadHrOperations = useCallback(async () => {
     if (!activeBusinessId) {
@@ -474,7 +489,7 @@ export default function HR() {
       )}
 
       <div className="flex gap-2 p-1 bg-gray-100 rounded-2xl w-fit overflow-x-auto max-w-full no-scrollbar">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { HR_LEAVE_KINDS, type HrLeaveKindId } from '@/src/lib/meizito/hr-form-payload';
 import type { HrRequestSubtypeId } from '@/src/lib/meizito/hr-request-types';
+import JalaliDateInput from '@/src/views/meizito/components/JalaliDateInput';
 
 export type HrEligibilityPreview = { ok: true; tenureMonths?: number } | { ok: false; messageFa: string };
 
@@ -68,6 +69,7 @@ export default function HrRequestFields({
 
   if (hrSubtype === 'leave') {
     const leaveKind = (value.leaveKind as HrLeaveKindId) ?? 'annual';
+    const hourly = leaveKind === 'hourly';
     return (
       <div className="space-y-2 rounded-xl border border-nexa-border/60 p-3 bg-white">
         <p className="text-[10px] font-bold text-gray-500">فرم مرخصی</p>
@@ -83,21 +85,43 @@ export default function HrRequestFields({
           ))}
         </select>
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="date"
-            value={String(value.startDate ?? '')}
-            onChange={(e) => onChange({ ...value, startDate: e.target.value })}
-            className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num"
-            aria-label="از تاریخ"
-          />
-          <input
-            type="date"
-            value={String(value.endDate ?? '')}
-            onChange={(e) => onChange({ ...value, endDate: e.target.value })}
-            className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num"
-            aria-label="تا تاریخ"
-          />
+          <div>
+            <p className="text-[9px] text-gray-400 mb-1">{hourly ? 'تاریخ' : 'از تاریخ'}</p>
+            <JalaliDateInput
+              value={String(value.startDate ?? '')}
+              onChange={(d) => onChange({ ...value, startDate: d })}
+              className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num w-full"
+            />
+          </div>
+          {!hourly && (
+            <div>
+              <p className="text-[9px] text-gray-400 mb-1">تا تاریخ</p>
+              <JalaliDateInput
+                value={String(value.endDate ?? '')}
+                onChange={(d) => onChange({ ...value, endDate: d })}
+                className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num w-full"
+              />
+            </div>
+          )}
         </div>
+        {hourly && (
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="time"
+              value={String(value.startTime ?? '')}
+              onChange={(e) => onChange({ ...value, startTime: e.target.value })}
+              className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num"
+              aria-label="ساعت شروع"
+            />
+            <input
+              type="time"
+              value={String(value.endTime ?? '')}
+              onChange={(e) => onChange({ ...value, endTime: e.target.value })}
+              className="bg-gray-50 rounded-xl px-3 py-2 text-xs font-fa-num"
+              aria-label="ساعت پایان"
+            />
+          </div>
+        )}
         {checking && <p className="text-[9px] text-gray-400">بررسی شرایط…</p>}
       </div>
     );

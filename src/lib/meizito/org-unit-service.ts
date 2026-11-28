@@ -7,6 +7,9 @@ const createSchema = z.object({
   name: z.string().min(1, 'نام واحد الزامی است'),
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  location: z.string().optional(),
 });
 
 export async function listOrgUnits(businessId: string) {
@@ -43,6 +46,9 @@ export async function createOrgUnit(businessId: string, raw: unknown) {
       businessId,
       name: body.name.trim(),
       parentId: body.parentId ?? null,
+      phone: body.phone?.trim() ?? '',
+      email: body.email?.trim() ?? '',
+      location: body.location?.trim() ?? '',
       sortOrder: body.sortOrder ?? (max._max.sortOrder ?? -1) + 1,
     },
   });
@@ -58,6 +64,9 @@ export async function updateOrgUnit(businessId: string, unitId: string, raw: unk
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
       ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone.trim() } : {}),
+      ...(body.email !== undefined ? { email: body.email.trim() } : {}),
+      ...(body.location !== undefined ? { location: body.location.trim() } : {}),
     },
   });
 }

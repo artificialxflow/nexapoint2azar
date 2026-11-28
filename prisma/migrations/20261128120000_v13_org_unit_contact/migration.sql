@@ -1,0 +1,4 @@
+-- v13: optional contact fields on org units (updates/03 case 04)
+ALTER TABLE "OrgUnit" ADD COLUMN IF NOT EXISTS "phone" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "OrgUnit" ADD COLUMN IF NOT EXISTS "email" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "OrgUnit" ADD COLUMN IF NOT EXISTS "location" TEXT NOT NULL DEFAULT '';

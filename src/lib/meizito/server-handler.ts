@@ -64,6 +64,7 @@ import { applyLetterApprovalMutation } from '@/src/lib/meizito/letter-approval-m
 import {
   applyApprovalAction,
   applySubmitForApproval,
+  resolveHrApprovalAssigneeId,
   type RecordApprovalPayload,
 } from '@/src/lib/meizito/approval';
 import type { MeizitoApprovalAction, MeizitoInternalRequest, MeizitoLetter } from '@/src/types/meizito';
@@ -315,8 +316,15 @@ export async function handleMeizitoRequest(
       }
     }
     if (options?.submitForApproval !== false) {
-      const assigneeId =
+      let assigneeId =
         primaryAssigneeFromReferrals(request.referredToUserIds) ?? request.currentAssigneeId;
+      if (request.requestKind === 'hr' && request.authorId) {
+        assigneeId = resolveHrApprovalAssigneeId(
+          request.authorId,
+          directory.members,
+          assigneeId
+        );
+      }
       const approval = applySubmitForApproval(
         request,
         sessionUser.id,
@@ -381,8 +389,15 @@ export async function handleMeizitoRequest(
       }
     }
     if (options?.submitForApproval !== false) {
-      const assigneeId =
+      let assigneeId =
         primaryAssigneeFromReferrals(request.referredToUserIds) ?? request.currentAssigneeId;
+      if (request.requestKind === 'hr' && request.authorId) {
+        assigneeId = resolveHrApprovalAssigneeId(
+          request.authorId,
+          directory.members,
+          assigneeId
+        );
+      }
       const approval = applySubmitForApproval(
         request,
         sessionUser.id,

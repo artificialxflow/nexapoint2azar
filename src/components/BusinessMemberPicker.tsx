@@ -13,6 +13,8 @@ type Props = {
   className?: string;
   /** اگر false باشد فقط انتخاب از لیست تیم */
   allowFreeText?: boolean;
+  /** محدود به نام‌های مشخص (مثلاً اعضای همان میز کار) */
+  restrictToMemberNames?: string[];
 };
 
 /** انتخاب عضو از team-directory (نه CRM Catalog). */
@@ -23,9 +25,15 @@ export default function BusinessMemberPicker({
   placeholder = 'جستجوی عضو تیم…',
   className = '',
   allowFreeText = true,
+  restrictToMemberNames,
 }: Props) {
   const { listTeamDirectory } = useMeizito();
-  const members = useMemo(() => listTeamDirectory('all'), [listTeamDirectory]);
+  const members = useMemo(() => {
+    const all = listTeamDirectory('all');
+    if (!restrictToMemberNames?.length) return all;
+    const allowed = new Set(restrictToMemberNames.map((n) => n.trim()).filter(Boolean));
+    return all.filter((m) => allowed.has(m.name));
+  }, [listTeamDirectory, restrictToMemberNames]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);

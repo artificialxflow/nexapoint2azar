@@ -5,6 +5,7 @@ export const HR_LEAVE_KINDS = [
   { id: 'annual', label: 'استحقاقی' },
   { id: 'sick', label: 'استعلاجی' },
   { id: 'unpaid', label: 'بدون حقوق' },
+  { id: 'hourly', label: 'مرخصی ساعتی' },
 ] as const;
 
 export type HrLeaveKindId = (typeof HR_LEAVE_KINDS)[number]['id'];
@@ -28,11 +29,55 @@ export type HrLoanFormPayload = {
 
 export type HrFormPayload = HrLeaveFormPayload | HrAdvanceFormPayload | HrLoanFormPayload;
 
-const leaveSchema = z.object({
-  leaveKind: z.enum(['annual', 'sick', 'unpaid']),
-  startDate: z.string().min(1, 'تاریخ شروع الزامی است.'),
-  endDate: z.string().min(1, 'تاریخ پایان الزامی است.'),
-});
+const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const leaveSchema = z
+  .object({
+    leaveKind: z.enum(['annual', 'sick', 'unpaid', 'hourly']),
+    startDate: z.string().min(1, 'تاریخ شروع الزامی است.'),
+    endDate: z.string().optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.leaveKind === 'hourly') {
+      if (!data.startTime || !timeRe.test(data.startTime)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ساعت شروع (مثلاً 10:00) الزامی است.',
+          path: ['startTime'],
+        });
+      }
+      if (!data.endTime || !timeRe.test(data.endTime)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ساعت پایان (مثلاً 12:30) الزامی است.',
+          path: ['endTime'],
+        });
+      }
+      if (
+        data.startTime &&
+        data.endTime &&
+        timeRe.test(data.startTime) &&
+        timeRe.test(data.endTime) &&
+        data.endTime <= data.startTime
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'ساعت پایان باید بعد از ساعت شروع باشد.',
+          path: ['endTime'],
+        });
+      }
+      return;
+    }
+    if (!data.endDate?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'تاریخ پایان الزامی است.',
+        path: ['endDate'],
+      });
+    }
+  });
 
 const advanceSchema = z.object({
   amount: z.number().positive('مبلغ مساعده باید بیشتر از صفر باشد.'),
@@ -69,10 +114,15 @@ export function validateHrFormPayload(
     if (!parsed.success) {
       return { ok: false, messageFa: parsed.error.issues[0]?.message ?? 'فرم مرخصی ناقص است.' };
     }
-    if (parsed.data.endDate < parsed.data.startDate) {
+    const endDate = parsed.data.leaveKind === 'hourly' ? parsed.data.startDate : parsed.data.endDate ?? '';
+    if (parsed.data.leaveKind !== 'hourly' && endDate < parsed.data.startDate) {
       return { ok: false, messageFa: 'تاریخ پایان باید بعد از تاریخ شروع باشد.' };
     }
-    return { ok: true, data: parsed.data };
+  const data =
+    parsed.data.leaveKind === 'hourly'
+      ? { ...parsed.data, endDate: parsed.data.startDate }
+      : { ...parsed.data, endDate: endDate };
+    return { ok: true, data };
   }
   if (subtype === 'advance') {
     const parsed = advanceSchema.safeParse(payload);
@@ -99,6 +149,9 @@ export function summarizeHrFormPayload(
   const p = raw as Record<string, unknown>;
   if (subtype === 'leave') {
     const kind = HR_LEAVE_KINDS.find((k) => k.id === p.leaveKind)?.label ?? String(p.leaveKind ?? '');
+    if (p.leaveKind === 'hourly') {
+      return `${kind} · ${String(p.startDate ?? '')} · ${String(p.startTime ?? '')}–${String(p.endTime ?? '')}`;
+    }
     return `${kind} · ${String(p.startDate ?? '')} تا ${String(p.endDate ?? '')}`;
   }
   if (subtype === 'advance') {

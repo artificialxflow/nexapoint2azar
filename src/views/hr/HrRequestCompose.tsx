@@ -36,6 +36,7 @@ export default function HrRequestCompose({ businessId, authorId, authorName, onC
   }, [subtypeOptions, hrSubtype]);
   const [eligibility, setEligibility] = useState<HrEligibilityPreview | null>(null);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [saving, setSaving] = useState(false);
 
   const submitDisabled =
@@ -47,6 +48,7 @@ export default function HrRequestCompose({ businessId, authorId, authorName, onC
   const submit = async () => {
     if (!businessId || !authorId || submitDisabled) return;
     setError('');
+    setSuccess('');
     const validated = validateHrFormPayload(hrSubtype, formPayload);
     if (!validated.ok) {
       setError(validated.messageFa);
@@ -76,6 +78,9 @@ export default function HrRequestCompose({ businessId, authorId, authorName, onC
       );
       setSubject('');
       setBody('');
+      setSuccess(
+        'درخواست ثبت شد و برای مدیر مستقیم شما ارسال شد. در تب بالا «درخواست‌ها» → فیلتر «درخواست‌های من» آن را می‌بینید؛ مدیر از «منتظر تأیید من» تأیید می‌کند.'
+      );
       onCreated?.();
     } catch (e) {
       if (e instanceof MeizitoApiError && e.status === 403) {
@@ -127,6 +132,11 @@ export default function HrRequestCompose({ businessId, authorId, authorName, onC
       )}
       {eligibility?.ok && eligibility.tenureMonths != null && (
         <p className="text-[10px] text-gray-500 font-fa-num">سابقه شما: {eligibility.tenureMonths} ماه</p>
+      )}
+      {success && (
+        <p className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+          {success}
+        </p>
       )}
       {error && <p className="text-xs font-bold text-rose-700 bg-rose-50 rounded-xl px-3 py-2">{error}</p>}
       <button

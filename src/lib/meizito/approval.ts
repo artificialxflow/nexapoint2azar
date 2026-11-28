@@ -6,7 +6,7 @@ import type {
   MeizitoMockUser,
 } from '@/src/types/meizito';
 import { MEIZITO_MOCK_USERS } from '@/src/types/meizito';
-import { isManagerRole } from '@/src/lib/meizito/teamHierarchy';
+import { getDirectManagerId, isManagerRole } from '@/src/lib/meizito/teamHierarchy';
 
 export function newApprovalStepId(): string {
   return `ap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14,6 +14,20 @@ export function newApprovalStepId(): string {
 
 export function getDefaultManagerId(users: MeizitoMockUser[] = MEIZITO_MOCK_USERS): string {
   return users.find((u) => u.role === 'manager')?.id ?? users[0]?.id ?? 'user-manager';
+}
+
+/** تأیید HR: اول مدیر مستقیم از چارت، بعد مدیر پیش‌فرض تیم. */
+export function resolveHrApprovalAssigneeId(
+  authorId: string | undefined,
+  users: MeizitoMockUser[],
+  explicitAssigneeId?: string
+): string {
+  if (explicitAssigneeId) return explicitAssigneeId;
+  if (authorId) {
+    const directId = getDirectManagerId(authorId, users);
+    if (directId) return directId;
+  }
+  return getDefaultManagerId(users);
 }
 
 export function normalizeApprovableFields(
